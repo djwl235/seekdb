@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_RESV
+#include "sql/table_function/file_table_function.h"
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/resolver/dml/ob_del_upd_resolver.h"
 #include "share/ob_time_utility2.h"
@@ -3048,6 +3049,11 @@ int ObSelectResolver::resolve_into_outfile_without_format(const ParseNode *node,
                                                           ObSelectIntoItem &into_item)
 {
   int ret = OB_SUCCESS;
+  if (node->value_ == 1 && node->num_child_ == 2) {
+    OZ (resolve_into_const_node(node->children_[0], into_item.outfile_name_));
+    OZ (resolve_file_copy_options(*this, *node, into_item.copy_options_));
+    return ret;
+  }
   if (node->num_child_ != 5) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_FAIL(resolve_into_const_node(node->children_[0], into_item.outfile_name_))) {

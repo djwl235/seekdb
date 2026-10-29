@@ -28,6 +28,7 @@ namespace oceanbase
 {
 namespace sql
 {
+class ICopyFileWriter;
 class ObSelectIntoOpInput : public ObOpInput
 {
   OB_UNIS_VERSION_V(1);
@@ -71,7 +72,7 @@ public:
       parallel_(1),
       buffer_size_(DEFAULT_BUFFER_SIZE),
       is_overwrite_(false),
-      external_properties_(alloc)
+      external_properties_(alloc), copy_options_()
   {
   }
 
@@ -91,6 +92,7 @@ public:
   int64_t buffer_size_;
   bool is_overwrite_;
   ObExternalFileFormat::StringData external_properties_;
+  common::ObString copy_options_;
   static const int64_t DEFAULT_MAX_FILE_SIZE = 256LL * 1024 * 1024;
   static const int64_t DEFAULT_BUFFER_SIZE = 1LL * 1024 * 1024;
 };
@@ -100,7 +102,7 @@ class ObSelectIntoOp : public ObOperator
 public:
   ObSelectIntoOp(ObExecContext &exec_ctx, const ObOpSpec &spec, ObOpInput *input)
     : ObOperator(exec_ctx, spec, input),
-      top_limit_cnt_(INT64_MAX),
+      copy_writer_(nullptr), top_limit_cnt_(INT64_MAX),
       is_first_(true),
       field_str_(),
       line_str_(),
@@ -256,6 +258,9 @@ private:
   int create_the_only_data_writer(ObExternalFileWriter *&data_writer);
   int new_data_writer(ObExternalFileWriter *&data_writer);
   int check_secure_file_path(ObString file_name);
+  int copy_to_file(bool batch, int64_t max_rows);
+  int copy_current_row();
+  ICopyFileWriter *copy_writer_;
   char *get_json_buf() { return json_buf_; }
   int64_t get_json_buf_len() { return json_buf_len_; }
   char *get_shared_buf() { return shared_buf_; }

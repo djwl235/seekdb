@@ -17,6 +17,7 @@
     "crate": "local",
     "headers": {
       "local_bridge.h": "cxxbridge/include/local/src/bridge.rs.h",
+      "file_sql_bridge.h": "cxxbridge/include/local/src/file_sql.rs.h",
       "local/src/bridge.rs.h": "cxxbridge/include/local/src/bridge.rs.h",
       "rust/cxx.h": "cxxbridge/include/rust/cxx.h"
     },

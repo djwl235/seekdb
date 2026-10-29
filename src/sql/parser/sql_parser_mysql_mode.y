@@ -286,7 +286,7 @@ END_P SET_VAR DELIMITER
         EXTENDED EXCLUSIVE EXTENDED_NOADDR EXTENT_SIZE EXTRACT EXCEPT EXPIRED ENCODING EMPTY_FIELD_AS_NULL EUCLIDEAN
 
         FAIL FAILOVER FAST FAULTS FIELDS FILEX FIRST FIRST_VALUE FIXED FLUSH FORMAT
-        FOUND FORK FREEZE FREQUENCY FUNCTION FOLLOWING FLASHBACK FULL FRAGMENTATION FROZEN FILE_ID FILTER
+        FOUND FORK FREEZE FREQUENCY FUNCTION FUNCTIONS FOLLOWING FLASHBACK FULL FRAGMENTATION FROZEN FILE_ID FILTER
         FIELD_OPTIONALLY_ENCLOSED_BY FIELD_DELIMITER FIELD_ENCLOSED_BY FILE_EXTENSION
 
         GENERAL GEOMETRY GEOMCOLLECTION GEOMETRYCOLLECTION GET_FORMAT GLOBAL GRANTS GROUP_CONCAT GROUPING
@@ -373,6 +373,7 @@ END_P SET_VAR DELIMITER
 //-----------------------------non_reserved keyword end---------------------------------------------
 %type <node> sql_stmt stmt_list stmt opt_end_p
 %type <node> select_stmt update_stmt delete_stmt
+%type <node> file_copy_stmt file_copy_source file_copy_options file_copy_option_list file_copy_option
 %type <node> insert_stmt single_table_insert values_clause dml_table_name
 %type <node> create_table_stmt create_table_like_stmt fork_table_stmt fork_database_stmt diff_table_stmt merge_table_stmt opt_table_option_list table_option_list table_option table_option_list_space_seperated parallel_option lob_storage_clause lob_storage_parameter lob_storage_parameters lob_chunk_size
 %type <node> index_or_heap
@@ -497,7 +498,8 @@ END_P SET_VAR DELIMITER
 %type <node> dynamic_sampling_hint
 %type <node> skip_index_type opt_skip_index_type_list
 %type <node> vec_index_params vec_index_param vec_index_param_value opt_with_vector_index_parameters
-%type <node> json_table_expr unnest_expr mock_jt_on_error_on_empty jt_column_list json_table_column_def
+%type <node> table_function_expr table_function_arguments table_function_column_aliases
+%type <node> json_table_expr mock_jt_on_error_on_empty jt_column_list json_table_column_def
 %type <node> json_table_ordinality_column_def json_table_exists_column_def json_table_value_column_def json_table_nested_column_def
 %type <node> opt_value_on_empty_or_error_or_mismatch opt_on_mismatch
 %type <node> table_values_clause table_values_clause_with_order_by_and_limit values_row_list row_value
@@ -510,7 +512,6 @@ END_P SET_VAR DELIMITER
 %type <node> sys_view_cast_opt
 %type <node> column_list_with_boost with_param_column_ref
 %type <node> es_sql_opt
-%type <node> hybrid_search_expr hybrid_search_param
 %type <node> vector_similarity_expr vector_similarity_metric
 %type <node> algorithm_opt lock_opt
 %type <node> flush_privileges_stmt opt_flush_privileges_scope
@@ -556,6 +557,7 @@ opt_end_p:
 /* only preparable statement will set question mark size */
 stmt:
     select_stmt             { $$ = $1; question_mark_issue($$, result); }
+  | file_copy_stmt          { $$ = $1; question_mark_issue($$, result); }
   | insert_stmt             { $$ = $1; question_mark_issue($$, result); }
   | create_table_stmt       {
     $$ = $1;
@@ -8903,6 +8905,60 @@ LIMIT limit_expr OFFSET limit_expr
 }
 ;
 
+file_copy_stmt:
+COPY file_copy_source TO STRING_VALUE file_copy_options
+{
+  ParseNode *into = NULL;
+  malloc_non_terminal_node(into, result->malloc_pool_, T_INTO_OUTFILE, 2, $4, $5);
+  into->value_ = 1;
+  $$ = $2;
+  if ($$->children_[PARSE_SELECT_INTO] != NULL || $$->children_[PARSE_SELECT_INTO_EXTRA] != NULL) {
+    yyerror(&@2, result, "COPY source already has an INTO clause"); YYERROR;
+  }
+  $$->children_[PARSE_SELECT_INTO_EXTRA] = into;
+}
+;
+file_copy_source:
+select_with_parens { $$ = $1; }
+| tbl_name
+{
+  ParseNode *star=NULL,*projection=NULL,*columns=NULL,*tables=NULL;
+  malloc_terminal_node(star,result->malloc_pool_,T_STAR);
+  malloc_non_terminal_node(projection,result->malloc_pool_,T_PROJECT_STRING,1,star);
+  merge_nodes(columns,result,T_PROJECT_LIST,projection);
+  merge_nodes(tables,result,T_FROM_LIST,$1);
+  malloc_select_node($$,result->malloc_pool_);
+  $$->children_[PARSE_SELECT_SELECT]=columns;$$->children_[PARSE_SELECT_FROM]=tables;
+}
+;
+file_copy_options:
+/*empty*/ {$$=NULL;}
+| '(' file_copy_option_list ')' {merge_nodes($$,result,T_EXPR_LIST,$2);}
+;
+file_copy_option_list:
+file_copy_option {$$=$1;}
+| file_copy_option_list ',' file_copy_option {malloc_non_terminal_node($$,result->malloc_pool_,T_LINK_NODE,2,$1,$3);}
+;
+file_copy_option:
+column_name literal
+{
+  ParseNode *key=NULL;malloc_non_terminal_node(key,result->malloc_pool_,T_COLUMN_REF,3,NULL,NULL,$1);
+  malloc_non_terminal_node($$,result->malloc_pool_,T_OP_EQ,2,key,$2);
+}
+| column_name
+{
+  ParseNode *key=NULL,*value=NULL;malloc_non_terminal_node(key,result->malloc_pool_,T_COLUMN_REF,3,NULL,NULL,$1);
+  malloc_terminal_node(value,result->malloc_pool_,T_BOOL);value->value_=1;
+  malloc_non_terminal_node($$,result->malloc_pool_,T_OP_EQ,2,key,value);
+}
+| FORMAT relation_name
+{
+  ParseNode *key=NULL,*name=NULL;make_name_node(name,result->malloc_pool_,"format");
+  malloc_non_terminal_node(key,result->malloc_pool_,T_COLUMN_REF,3,NULL,NULL,name);
+  $2->type_=T_VARCHAR;malloc_non_terminal_node($$,result->malloc_pool_,T_OP_EQ,2,key,$2);
+}
+;
+
 into_clause:
 INTO OUTFILE STRING_VALUE opt_charset field_opt line_opt file_opt
 {
@@ -10840,11 +10896,7 @@ tbl_name
   $$ = $2;
   $$->value_ = 1; // value_ = 1 means with parentheses
 }
-| unnest_expr
-{
-  $$ = $1;
-}
-| hybrid_search_expr
+| table_function_expr
 {
   $$ = $1;
 }
@@ -11246,18 +11298,7 @@ relation_factor %prec LOWER_PARENS
   merge_nodes($$, result, T_INDEX_HINT_LIST, $7);
   malloc_non_terminal_node($$, result->malloc_pool_, T_ALIAS, 6, $1, $6, $$, $2, $3, $5);
 }
-| TABLE '(' simple_expr ')' %prec LOWER_PARENS
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_TABLE_COLLECTION_EXPRESSION, 2, $3, NULL);
-}
-| TABLE '(' simple_expr ')' relation_name
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_TABLE_COLLECTION_EXPRESSION, 2, $3, $5);
-}
-| TABLE '(' simple_expr ')' AS relation_name
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_TABLE_COLLECTION_EXPRESSION, 2, $3, $6);
-}
+
 ;
 
 dml_table_name:
@@ -12265,7 +12306,13 @@ explain_or_desc relation_factor opt_desc_column_option
   malloc_non_terminal_node($$, result->malloc_pool_, T_SHOW_COLUMNS, 4, $$, $2, NULL, $3);
 }
 
-| explain_or_desc explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, 0, $2, NULL, NULL);}
+| explain_or_desc explainable_stmt
+{
+  if ($1 != NULL && $2->type_ == T_SELECT) {
+    malloc_non_terminal_node($$, result->malloc_pool_, T_DESCRIBE_TABLE_FUNCTION, 1, $2);
+    $$->value_ = 1;
+  } else { GEN_EXPLAN_STMT($1, $$, 0, 0, $2, NULL, NULL); }
+}
 | explain_or_desc PRETTY explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, T_PRETTY, $3, NULL, NULL);}
 | explain_or_desc PRETTY_COLOR explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, T_PRETTY_COLOR, $3, NULL, NULL);}
 
@@ -12306,8 +12353,8 @@ explain_or_desc relation_factor opt_desc_column_option
 
 explain_or_desc:
 EXPLAIN {$$ = NULL;}
-| DESCRIBE {$$ = NULL;}
-| DESC  {$$ = NULL;}
+| DESCRIBE {malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 1;}
+| DESC  {malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 1;}
 ;
 
 explainable_stmt:
@@ -12625,7 +12672,15 @@ CLASS_ORIGIN
  *
  *****************************************************************************/
 show_stmt:
-SHOW opt_extended_or_full TABLES opt_from_or_in_database_clause opt_show_condition
+SHOW TABLE FUNCTIONS
+{ malloc_terminal_node($$, result->malloc_pool_, T_SHOW_TABLE_FUNCTIONS); }
+| DESCRIBE TABLE FUNCTION relation_name
+{ malloc_non_terminal_node($$, result->malloc_pool_, T_DESCRIBE_TABLE_FUNCTION, 1, $4); }
+| DESCRIBE TABLE FUNCTION table_function_expr
+{ malloc_non_terminal_node($$, result->malloc_pool_, T_DESCRIBE_TABLE_FUNCTION, 1, $4); }
+| DESCRIBE TABLE FUNCTION json_table_expr
+{ malloc_non_terminal_node($$, result->malloc_pool_, T_DESCRIBE_TABLE_FUNCTION, 1, $4); }
+| SHOW opt_extended_or_full TABLES opt_from_or_in_database_clause opt_show_condition
 {
   ParseNode *value = NULL;
   malloc_terminal_node(value, result->malloc_pool_, T_INT);
@@ -16625,20 +16680,20 @@ DAY
 *============================================================*/
 
 json_table_expr:
-JSON_TABLE '(' simple_expr ',' literal mock_jt_on_error_on_empty COLUMNS '(' jt_column_list ')' ')' relation_name
+JSON_TABLE '(' simple_expr ',' literal mock_jt_on_error_on_empty COLUMNS '(' jt_column_list ')' ')' relation_name table_function_column_aliases
 {
   ParseNode *params = NULL;
   merge_nodes(params, result, T_EXPR_LIST, $9);
-  malloc_non_terminal_node($$, result->malloc_pool_, T_JSON_TABLE_EXPRESSION, 5, $3, $5, $6, params, $12);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_JSON_TABLE_EXPRESSION, 6, $3, $5, $6, params, $12, $13);
   if (result->pl_parse_info_.is_pl_parse_ && !result->pl_parse_info_.is_pl_parse_expr_) {
     result->pl_parse_info_.is_forbid_pl_fp_ = true;
   }
 }
-| JSON_TABLE '(' simple_expr ',' literal mock_jt_on_error_on_empty COLUMNS '(' jt_column_list ')' ')' AS relation_name
+| JSON_TABLE '(' simple_expr ',' literal mock_jt_on_error_on_empty COLUMNS '(' jt_column_list ')' ')' AS relation_name table_function_column_aliases
 {
   ParseNode *params = NULL;
   merge_nodes(params, result, T_EXPR_LIST, $9);
-  malloc_non_terminal_node($$, result->malloc_pool_, T_JSON_TABLE_EXPRESSION, 5, $3, $5, $6, params, $13);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_JSON_TABLE_EXPRESSION, 6, $3, $5, $6, params, $13, $14);
   if (result->pl_parse_info_.is_pl_parse_ && !result->pl_parse_info_.is_pl_parse_expr_) {
     result->pl_parse_info_.is_forbid_pl_fp_ = true;
   }
@@ -16647,7 +16702,7 @@ JSON_TABLE '(' simple_expr ',' literal mock_jt_on_error_on_empty COLUMNS '(' jt_
 {
   ParseNode *params = NULL;
   merge_nodes(params, result, T_EXPR_LIST, $9);
-  malloc_non_terminal_node($$, result->malloc_pool_, T_JSON_TABLE_EXPRESSION, 5, $3, $5, $6, params, NULL);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_JSON_TABLE_EXPRESSION, 6, $3, $5, $6, params, NULL, NULL);
   if (result->pl_parse_info_.is_pl_parse_ && !result->pl_parse_info_.is_pl_parse_expr_) {
     result->pl_parse_info_.is_forbid_pl_fp_ = true;
   }
@@ -17428,54 +17483,36 @@ JSON '(' column_name ')' STORE AS '(' lob_storage_parameters ')'
 }
 ;
 
-unnest_expr:
-UNNEST '(' simple_expr_list ')' 
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_UNNEST_EXPRESSION, 3, $3, NULL, NULL);
-}
-| UNNEST '(' simple_expr_list ')' relation_name
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_UNNEST_EXPRESSION, 3, $3, $5, NULL);
-}
-| UNNEST '(' simple_expr_list ')' AS relation_name
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_UNNEST_EXPRESSION, 3, $3, $6, NULL);
-}
-| UNNEST '(' simple_expr_list ')' relation_name '(' relation_name_list ')'
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_UNNEST_EXPRESSION, 3, $3, $5, $7);
-}
-| UNNEST '(' simple_expr_list ')' AS relation_name '(' relation_name_list ')'
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_UNNEST_EXPRESSION, 3, $3, $6, $8);
-}
+table_function_column_aliases:
+/* empty */ { $$ = NULL; }
+| '(' relation_name_list ')' { $$ = $2; }
 ;
 
-hybrid_search_expr:
-HYBRID_SEARCH '(' literal ',' hybrid_search_param ')'
-{
-  ParseNode *alias_node = NULL;
-  make_name_node(alias_node, result->malloc_pool_, "");
-  malloc_non_terminal_node($$, result->malloc_pool_, T_HYBRID_SEARCH_EXPRESSION, 3, $3, $5, alias_node);
-}
-| HYBRID_SEARCH '(' literal ',' hybrid_search_param ')' relation_name
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_HYBRID_SEARCH_EXPRESSION, 3, $3, $5, $7);
-}
-| HYBRID_SEARCH '(' literal ',' hybrid_search_param ')' AS relation_name
-{
-  malloc_non_terminal_node($$, result->malloc_pool_, T_HYBRID_SEARCH_EXPRESSION, 3, $3, $5, $8);
-}
+table_function_arguments:
+/* empty */ { $$ = NULL; }
+| simple_expr_list { $$ = $1; }
 ;
 
-hybrid_search_param:
-literal
+table_function_expr:
+relation_name '(' table_function_arguments ')' %prec LOWER_PARENS
 {
-  $$ = $1;
+  malloc_non_terminal_node($$, result->malloc_pool_, T_TABLE_FUNCTION_CALL, 4, $1, $3, NULL, NULL);
 }
-| USER_VARIABLE
+| relation_name '(' table_function_arguments ')' relation_name
 {
-  $$ = $1;
+  malloc_non_terminal_node($$, result->malloc_pool_, T_TABLE_FUNCTION_CALL, 4, $1, $3, $5, NULL);
+}
+| relation_name '(' table_function_arguments ')' AS relation_name
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_TABLE_FUNCTION_CALL, 4, $1, $3, $6, NULL);
+}
+| relation_name '(' table_function_arguments ')' relation_name '(' relation_name_list ')'
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_TABLE_FUNCTION_CALL, 4, $1, $3, $5, $7);
+}
+| relation_name '(' table_function_arguments ')' AS relation_name '(' relation_name_list ')'
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_TABLE_FUNCTION_CALL, 4, $1, $3, $6, $8);
 }
 ;
 
@@ -17491,7 +17528,8 @@ unreserved_keyword_normal { $$=$1;}
 ;
 
 unreserved_keyword_normal:
-ACCOUNT
+FUNCTIONS
+| ACCOUNT
 |       ACTION
 |       ACTIVE
 |       ADDDATE
@@ -17752,7 +17790,7 @@ ACCOUNT
 |       JSON_ARRAYAGG
 |       JSON_OBJECTAGG
 |       JSON_QUERY
-|       JSON_TABLE
+|       JSON_TABLE %prec LOWER_PARENS
 |       KEYWORD
 |       KEY_BLOCK_SIZE
 |       KEY_VERSION

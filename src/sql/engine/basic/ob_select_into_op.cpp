@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_ENG
+#include "sql/table_function/file_table_function.h"
 
 #include <cmath>
 #include <memory>
@@ -38,12 +39,16 @@ OB_SERIALIZE_MEMBER(ObSelectIntoOpInput, task_id_, sqc_id_);
 OB_SERIALIZE_MEMBER((ObSelectIntoSpec, ObOpSpec), into_type_, user_vars_, outfile_name_,
     field_str_, line_str_, closed_cht_, is_optional_, select_exprs_, is_single_, max_file_size_,
     escaped_cht_, cs_type_, parallel_, buffer_size_, is_overwrite_,
-    external_properties_);
+    external_properties_, copy_options_);
 
 
 int ObSelectIntoOp::inner_open()
 {
   int ret = OB_SUCCESS;
+  if (!MY_SPEC.copy_options_.empty()) {
+    opened_ = true;
+    return create_copy_file_writer(ctx_, MY_SPEC.outfile_name_.get_string(), MY_SPEC.copy_options_, copy_writer_);
+  }
   ObSQLSessionInfo *session = NULL;
   if (OB_ISNULL(session = ctx_.get_my_session())) {
     ret = OB_ERR_UNEXPECTED;
@@ -188,6 +193,7 @@ int ObSelectIntoOp::calc_outfile_path()
 }
 int ObSelectIntoOp::inner_get_next_row()
 {
+  if (copy_writer_ != nullptr) { return copy_to_file(false, 0); }
   int ret = 0 == top_limit_cnt_ ? OB_ITER_END : OB_SUCCESS;
   int64_t row_count = 0;
   const ObItemType into_type = MY_SPEC.into_type_;
@@ -236,6 +242,7 @@ int ObSelectIntoOp::inner_get_next_row()
 
 int ObSelectIntoOp::inner_get_next_batch(const int64_t max_row_cnt)
 {
+  if (copy_writer_ != nullptr) { return copy_to_file(true, max_row_cnt); }
   int ret = OB_SUCCESS;
   const ObBatchRows *child_brs = NULL;
   int64_t batch_size = min(max_row_cnt, MY_SPEC.max_batch_size_);
@@ -325,6 +332,7 @@ int ObSelectIntoOp::inner_rescan()
 int ObSelectIntoOp::inner_close()
 {
   int ret = OB_SUCCESS;
+  if (copy_writer_ != nullptr) { copy_writer_->~ICopyFileWriter(); copy_writer_ = nullptr; }
   if (OB_NOT_NULL(data_writer_) && OB_FAIL(data_writer_->close_data_writer())) {
   }
   return ret;
@@ -1215,7 +1223,7 @@ int ObSelectIntoOp::check_secure_file_path(ObString file_name)
 #endif
     ret = OB_FILE_NOT_EXIST;
   } else if (OB_FAIL(ObSchemaUtils::get_runtime_varchar_variable(*GCTX.schema_service_,
-                                                                SYS_VAR_SECURE_FILE_PRIV,
+                                                                share::SYS_VAR_SECURE_FILE_PRIV,
                                                                 ctx_.get_allocator(),
                                                                 secure_file_priv))) {
   } else if (OB_FAIL(ObResolverUtils::check_secure_path(secure_file_priv, actual_path))) {
@@ -1275,11 +1283,49 @@ int ObSelectIntoOp::new_data_writer(ObExternalFileWriter *&data_writer)
 
 void ObSelectIntoOp::destroy()
 {
+  if (copy_writer_ != nullptr) { copy_writer_->~ICopyFileWriter(); copy_writer_ = nullptr; }
   if (OB_NOT_NULL(data_writer_)) {
     data_writer_->~ObExternalFileWriter();
   }
   external_properties_.~ObExternalFileFormat();
   ObOperator::destroy();
+}
+
+int ObSelectIntoOp::copy_current_row()
+{
+  int ret=OB_SUCCESS;ObSEArray<ObObj,16> row;
+  for(int64_t i=0;OB_SUCC(ret)&&i<MY_SPEC.select_exprs_.count();++i){
+    ObExpr *expr=MY_SPEC.select_exprs_.at(i);ObDatum *datum=nullptr;ObObj value;
+    OZ(expr->eval(eval_ctx_,datum));OZ(datum->to_obj(value,expr->obj_meta_,expr->obj_datum_map_));OZ(row.push_back(value));
+  }
+  OZ(copy_writer_->append(row));return ret;
+}
+int ObSelectIntoOp::copy_to_file(bool batch,int64_t max_rows)
+{
+  int ret=OB_SUCCESS;int64_t count=0;
+  if(batch){
+    const ObBatchRows *rows=nullptr;bool end=false;
+    while(OB_SUCC(ret)&&!end){
+      clear_evaluated_flag();OZ(child_->get_next_batch(max_rows,rows));
+      if(OB_SUCC(ret)){
+        ObEvalCtx::BatchInfoScopeGuard guard(eval_ctx_);guard.set_batch_size(rows->size_);
+        for(int64_t i=0;OB_SUCC(ret)&&i<MY_SPEC.select_exprs_.count();++i){
+          OZ(MY_SPEC.select_exprs_.at(i)->eval_batch(eval_ctx_,*rows->skip_,rows->size_));
+        }
+        for(int64_t i=0;OB_SUCC(ret)&&i<rows->size_;++i){if(!rows->skip_->contain(i)){guard.set_batch_idx(i);OZ(copy_current_row());++count;}}
+        end=rows->end_;
+      }
+    }
+  }else{
+    while(OB_SUCC(ret)){
+      clear_evaluated_flag();ret=child_->get_next_row();
+      if(OB_SUCC(ret)){OZ(copy_current_row());++count;}
+    }
+    if(ret==OB_ITER_END){ret=OB_SUCCESS;}
+  }
+  OZ(copy_writer_->finish());
+  if(OB_SUCC(ret)){ctx_.get_physical_plan_ctx()->set_affected_rows(count);brs_.size_=0;brs_.end_=true;}
+  return OB_SUCC(ret)&&!batch?OB_ITER_END:ret;
 }
 
 }
