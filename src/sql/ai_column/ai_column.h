@@ -16,6 +16,9 @@ namespace oceanbase {
 namespace sql {
 struct ObResolverParams;
 class ObDMLResolver;
+class ObDMLStmt;
+class ObStmt;
+class ObExecContext;
 struct TableItem;
 struct ObTableAssignment;
 class ObInsertTableInfo;
@@ -41,6 +44,11 @@ int load_ai_column_definition(const share::schema::ObTableSchema &,
 std::string ai_column_hidden_name(const common::ObString &, char kind);
 int bind_ai_column_catalog(ObDMLResolver &, bool tasks,
                            const common::ObString &, TableItem *&);
+int resolve_ai_retry(ObResolverParams &, const ParseNode &, ObStmt *&);
+int collect_ai_read_columns(const ObDMLStmt &,
+                            share::schema::ObSchemaGetterGuard &,
+                            common::ObIArray<uint64_t> &);
+int check_ai_read_columns(ObExecContext &, const common::ObIArray<uint64_t> &);
 int apply_ai_insert_defaults(ObDMLResolver &, ObInsertTableInfo &);
 int apply_ai_update_assignments(ObDMLResolver &, const TableItem &,
                                 const share::schema::ObTableSchema &,

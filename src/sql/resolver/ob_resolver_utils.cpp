@@ -1607,6 +1607,7 @@ stmt::StmtType ObResolverUtils::get_stmt_type_by_item_type(const ObItemType item
 {
   stmt::StmtType type;
   switch (item_type) {
+  case T_AI_RETRY: type = stmt::T_UPDATE; break;
 #define SET_STMT_TYPE(item_type) \
   case item_type: {              \
     type = stmt::item_type;      \

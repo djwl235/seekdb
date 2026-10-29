@@ -82,7 +82,8 @@ int apply_ai_insert_defaults(ObDMLResolver &resolver,
   int ret = OB_SUCCESS;
   const ObTableSchema *schema = nullptr;
   ObRawExpr *request = nullptr;
-  if (!resolver.session_info_->is_user_session()) {
+  if (!resolver.session_info_->is_user_session() ||
+      resolver.params_.is_ai_retry_) {
     return ret;
   }
   OZ(resolver.schema_checker_->get_table_schema(table_info.ref_table_id_,
@@ -129,7 +130,8 @@ int apply_ai_update_assignments(ObDMLResolver &resolver, const TableItem &table,
   int ret = OB_SUCCESS;
   bool has_ai = false;
   ObRawExpr *request = nullptr;
-  if (!resolver.session_info_->is_user_session()) {
+  if (!resolver.session_info_->is_user_session() ||
+      resolver.params_.is_ai_retry_) {
     return ret;
   }
   const int64_t original_count = assignments.assignments_.count();
@@ -143,13 +145,15 @@ int apply_ai_update_assignments(ObDMLResolver &resolver, const TableItem &table,
     const auto &assignment = assignments.assignments_.at(i);
     const auto *column =
         schema.get_column_schema(assignment.column_expr_->get_column_id());
-    if (column != nullptr && column->is_ai_column() && !assignment.is_implicit_) {
+    if (column != nullptr && column->is_ai_column() &&
+        !assignment.is_implicit_) {
       ret = OB_NOT_SUPPORTED;
       LOG_USER_ERROR(OB_NOT_SUPPORTED,
                      "explicit writes to an AI result column");
     }
   }
-  OZ(resolver.resolve_all_basic_table_columns(table, true, nullptr));
+  ObSEArray<ColumnItem, 16> hidden_items;
+  OZ(resolver.resolve_all_basic_table_columns(table, true, &hidden_items));
   for (auto it = schema.column_begin();
        OB_SUCC(ret) && it != schema.column_end(); ++it) {
     const auto *column = *it;

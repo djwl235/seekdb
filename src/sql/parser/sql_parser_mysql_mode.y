@@ -333,7 +333,7 @@ END_P SET_VAR DELIMITER
         QUANTIFIER_TABLE QUARTER QUERY QUEUE_TIME QUICK
 
         RECOVER REDUNDANT REFRESH RELAY RELAYLOG RELAY_LOG_FILE RELAY_LOG_POS RELAY_THREAD RELOAD REMOVE
-        REPEATABLE RESET RESPECT RESTART RESTORE RESUME RETURNED_SQLSTATE RETURNS RETURNING REVERSE
+        REPEATABLE RESET RESPECT RESTART RESTORE RESUME RETRY RETURNED_SQLSTATE RETURNS RETURNING REVERSE
         REWRITE ROLLBACK ROLLUP ROUTINE ROW ROWID ROW_COUNT ROW_FORMAT ROWS RTREE
         RUN RECYCLEBIN REPLICATION ROTATE ROW_NUMBER RUDUNDANT RECURSIVE RANDOM REDO_TRANSPORT_OPTIONS
         RANK READ_ONLY RECOVERY REJECT ROLE
@@ -6151,7 +6151,7 @@ expr
 ;
 ai_column_options:
 /*empty*/ {$$=NULL;}
-| WITH '(' expr_list ')' {merge_nodes($$,result,T_EXPR_LIST,$3);}
+| WITH '(' expr_list ')' {$$=$3;}
 ;
 
 column_attribute:
@@ -14727,7 +14727,19 @@ relation_factor TO relation_factor
  *
  *****************************************************************************/
 alter_table_stmt:
-alter_with_opt_hint TABLE relation_factor alter_table_actions
+alter_with_opt_hint TABLE relation_factor RETRY AI COLUMN column_name opt_where
+{
+  (void)($1);
+  malloc_non_terminal_node($$,result->malloc_pool_,T_AI_RETRY,4,$3,$7,$8,NULL);
+  $$->is_tree_not_param_=1;
+}
+| alter_with_opt_hint TABLE relation_factor RETRY AI COLUMN column_name opt_where ',' alter_table_actions
+{
+  (void)($1);
+  malloc_non_terminal_node($$,result->malloc_pool_,T_AI_RETRY,4,$3,$7,$8,$10);
+  $$->is_tree_not_param_=1;
+}
+| alter_with_opt_hint TABLE relation_factor alter_table_actions
 {
   ParseNode *table_actions = NULL;
   merge_nodes(table_actions, result, T_ALTER_TABLE_ACTION_LIST, $4);
@@ -18016,6 +18028,7 @@ FUNCTIONS
 |       RESTART
 |       RESTORE
 |       RESUME
+|       RETRY
 |       RETURNED_SQLSTATE
 |       RETURNING
 |       RETURNS

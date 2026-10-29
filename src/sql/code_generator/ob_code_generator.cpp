@@ -17,6 +17,7 @@
 #define USING_LOG_PREFIX SQL_CG
 
 #include "config_bridge.h"
+#include "sql/ai_column/ai_column.h"
 #include "sql/code_generator/ob_code_generator.h"
 #include "sql/code_generator/ob_static_engine_cg.h"
 #include "sql/engine/ob_physical_plan.h"
@@ -31,6 +32,7 @@ int ObCodeGenerator::generate(const ObLogPlan &log_plan,
 {
   int ret = OB_SUCCESS;
   int64_t batch_size = 0;
+  OZ(collect_ai_read_columns(*log_plan.get_stmt(), *log_plan.get_optimizer_context().get_schema_guard(), phy_plan.ai_read_columns_));
   OZ(detect_batch_size(log_plan, batch_size));
   if (OB_SUCC(ret) && batch_size > 0) {
     log_plan.get_optimizer_context().set_batch_size(batch_size);

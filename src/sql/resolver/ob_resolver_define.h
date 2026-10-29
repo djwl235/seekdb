@@ -363,6 +363,7 @@ struct ObResolverParams
        new_gen_qid_(1),
        new_cte_tid_(common::OB_MIN_CTE_TABLE_ID + 1),
        new_gen_wid_(1),
+       is_ai_retry_(false),
        is_resolve_table_function_expr_(false),
        tg_timing_event_(-1),
        is_column_ref_(true),
@@ -438,6 +439,7 @@ private:
   int64_t new_gen_wid_;   // when number
   friend class ObStmtResolver;
 public:
+  bool is_ai_retry_;
   bool is_resolve_table_function_expr_;  // used to mark resolve table function expr.
   int64_t tg_timing_event_;      // mysql mode, trigger timing and type
   bool is_column_ref_;                   // used to mark normal column ref

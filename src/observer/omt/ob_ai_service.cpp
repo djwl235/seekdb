@@ -61,6 +61,8 @@ int ObAiService::init()
 
 void ObAiService::destroy()
 {
+  column_worker_.stop();
+  column_worker_.wait();
   is_inited_ = false;
 }
 
