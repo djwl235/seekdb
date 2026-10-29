@@ -191,6 +191,9 @@ int resolve_ai_column_attribute(ObColumnSchemaV2 &column, const ParseNode &node,
           const auto &dim = *args.children_[2]->children_[0];
           if (dim.type_ != T_INT || dim.value_ != d.dimension_) {
             ret = OB_ERR_INVALID_VECTOR_DIM;
+            LOG_USER_ERROR(OB_ERR_INVALID_VECTOR_DIM,
+                           static_cast<int>(d.dimension_),
+                           static_cast<int>(dim.value_));
           }
         }
       } else {
@@ -313,9 +316,6 @@ int prepare_ai_columns(ObTableSchema &table, ObIAllocator &allocator,
       }
       if (source == nullptr || source->is_ai_column() || source->is_hidden()) {
         ret = OB_NOT_SUPPORTED;
-        LOG_USER_ERROR(
-            OB_NOT_SUPPORTED,
-            "AI columns cannot depend on other AI columns or unknown columns");
       }
     }
     for (char kind : {'s', 'r', 'p'}) {
@@ -341,6 +341,10 @@ int prepare_ai_columns(ObTableSchema &table, ObIAllocator &allocator,
         value = metadata;
       } else {
         value.set_null();
+      }
+      if (!value.is_null()) {
+        value.set_collation_type(CS_TYPE_UTF8MB4_BIN);
+        value.set_collation_level(CS_LEVEL_IMPLICIT);
       }
       OZ(hidden.set_cur_default_value(value, false));
       OZ(hidden.set_orig_default_value(value));

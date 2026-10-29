@@ -10,6 +10,9 @@
 #include "share/schema/ob_multi_version_schema_service.h"
 #include "sql/ai_column/ai_column.h"
 #include "sql/engine/expr/ob_expr_ai/ob_ai_func_utils.h"
+#include <cerrno>
+#include <cmath>
+#include <map>
 #include <set>
 #include <unistd.h>
 
@@ -155,6 +158,69 @@ void AiColumnWorker::run1() {
 }
 int AiColumnWorker::poll() {
   int ret = OB_SUCCESS;
+  // ADD COLUMN uses the native original default for existing rows. Initialize
+  // their missing request tokens only after the schema change commits. A single
+  // ordinary UPDATE also makes the backfill transactional and crash
+  // recoverable.
+  static std::map<uint64_t, int64_t> seeded;
+  ObArenaAllocator allocator("AiColumnSeed");
+  ObSchemaGetterGuard guard;
+  ObSEArray<const ObTableSchema *, 64> tables;
+  OZ(GCTX.schema_service_->get_runtime_schema_guard(guard));
+  OZ(guard.get_table_schemas_in_runtime(tables));
+  for (int64_t i = 0; OB_SUCC(ret) && i < tables.count(); ++i) {
+    const auto *table = tables.at(i);
+    if (table->is_index_table() || table->is_sys_table() ||
+        table->is_view_table())
+      continue;
+    const auto version = table->get_schema_version();
+    const auto known = seeded.find(table->get_table_id());
+    if (known != seeded.end() && known->second == version)
+      continue;
+    std::string assignments, predicate, first_request;
+    for (auto it = table->column_begin();
+         OB_SUCC(ret) && it != table->column_end(); ++it) {
+      if (!(*it)->is_ai_column())
+        continue;
+      AiColumnDefinition d;
+      OZ(load_ai_column_definition(*table, **it, allocator, d));
+      const auto request = name(d.request_name_), state = name(d.state_name_);
+      const std::string missing =
+          "(" + request + " IS NULL AND " + state + "='PENDING')";
+      const std::string fresh =
+          "CAST(JSON_OBJECT('id',UUID(),'eligible',NOW(6),'state',0,'retry',0,'"
+          "owner',NULL,'boot',NULL,'lease',NULL,'done',FALSE) AS CHAR)";
+      if (!assignments.empty()) {
+        assignments += ",";
+        predicate += " OR ";
+      }
+      assignments += request + "=CASE WHEN " + missing + " THEN " +
+                     (first_request.empty()
+                          ? fresh
+                          : "COALESCE(" + first_request + "," + fresh + ")") +
+                     " ELSE " + request + " END";
+      predicate += missing;
+      if (first_request.empty())
+        first_request = request;
+    }
+    if (OB_SUCC(ret) && !assignments.empty()) {
+      const ObDatabaseSchema *database = nullptr;
+      OZ(guard.get_database_schema(table->get_database_id(), database));
+      if (database == nullptr) {
+        ret = OB_SCHEMA_ERROR;
+        break;
+      }
+      int64_t affected = 0;
+      OZ(write("UPDATE /*+ OPT_PARAM('hidden_column_visible','true') "
+               "USE_PLAN_CACHE(NONE) */ " +
+                   name(database->get_database_name_str()) + "." +
+                   name(table->get_table_name_str()) + " SET " + assignments +
+                   " WHERE " + predicate,
+               affected));
+    }
+    if (OB_SUCC(ret))
+      seeded[table->get_table_id()] = version;
+  }
   Rows tasks;
   OZ(read("SELECT CAST(table_id AS CHAR),request_id,rowkey_predicate FROM "
           "oceanbase.__all_ai_column_task WHERE eligible_ts <= NOW(6) LIMIT 64",
@@ -256,6 +322,25 @@ int AiColumnWorker::process(uint64_t table_id, const std::string &request,
       continue;
     std::string output;
     int outcome = run_model(allocator, d, input[0], output);
+    if (outcome == OB_SUCCESS &&
+        ob_is_integer_type(work.column_->get_data_type())) {
+      const char *begin = output.c_str();
+      char *end = nullptr;
+      errno = 0;
+      if (ob_is_unsigned_type(work.column_->get_data_type())) {
+        if (output.find('-') != std::string::npos)
+          outcome = OB_INVALID_DATA;
+        (void)strtoull(begin, &end, 10);
+      } else {
+        (void)strtoll(begin, &end, 10);
+      }
+      while (end != nullptr && isspace(static_cast<unsigned char>(*end)))
+        ++end;
+      if (errno == ERANGE || end == begin || end == nullptr || *end != '\0')
+        outcome = OB_INVALID_DATA;
+    }
+    if (outcome == OB_SUCCESS && output.size() > 60000)
+      outcome = OB_SIZE_OVERFLOW;
     if (outcome == OB_SUCCESS) {
       // Ask the native type system to validate conversion before marking
       // success.

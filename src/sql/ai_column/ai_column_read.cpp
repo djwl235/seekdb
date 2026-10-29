@@ -10,6 +10,7 @@
 #include "sql/resolver/dml/ob_select_stmt.h"
 #include "sql/resolver/dml/ob_update_stmt.h"
 #include "sql/resolver/expr/ob_raw_expr_util.h"
+#include "sql/session/ob_inner_sql_connection.h"
 #include <set>
 namespace oceanbase {
 namespace sql {
@@ -91,6 +92,18 @@ int check_ai_read_columns(ObExecContext &ctx, const ObIArray<uint64_t> &ids) {
   // rollback have the same visibility as the statement being guarded.
   OZ(query::ObInnerSQLConnectionAccess::
          create_spi_connection_with_external_session(session, connection));
+  auto *nested = sql::as_inner_sql_connection(connection.get_ptr());
+  if (OB_SUCC(ret) && nested == nullptr)
+    ret = OB_ERR_UNEXPECTED;
+  if (OB_FAIL(ret))
+    return ret;
+  ObSQLSessionInfo::StmtSavedValue saved_session;
+  ObIInnerSQLConnection::SavedValue saved_connection;
+  // No row has been modified yet: omit this outer statement's mutating-table
+  // marker while retaining the caller's transaction and prior statement state.
+  OZ(nested->begin_nested_session(saved_session, saved_connection, true));
+  if (OB_FAIL(ret))
+    return ret;
   for (int64_t i = 0; OB_SUCC(ret) && i + 1 < ids.count(); i += 2) {
     const ObTableSchema *table = nullptr;
     const ObDatabaseSchema *db = nullptr;
@@ -131,6 +144,10 @@ int check_ai_read_columns(ObExecContext &ctx, const ObIArray<uint64_t> &ids) {
         ret = next;
     }
   }
+  const int restored =
+      nested->end_nested_session(saved_session, saved_connection);
+  if (OB_SUCC(ret))
+    ret = restored;
   return ret;
 }
 } // namespace sql
