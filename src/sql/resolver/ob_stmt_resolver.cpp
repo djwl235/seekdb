@@ -215,11 +215,17 @@ int ObStmtResolver::get_column_schema(const uint64_t table_id,
     ret = OB_NOT_INIT;
     SQL_RESV_LOG(WARN, "not init", K(ret), KP(schema_checker_), KP(session_info_));
   } else {
-    const bool hidden = get_hidden || session_info_->is_inner();
+    bool hidden = get_hidden || session_info_->is_inner();
+    if (!hidden && params_.query_ctx_ != nullptr) {
+      OZ(params_.query_ctx_->get_query_hint().get_global_hint().opt_params_.has_enable_opt_param(
+          ObOptParamHint::OptParamType::HIDDEN_COLUMN_VISIBLE, hidden));
+    }
 
     // Generated columns added by function-based indexes are hidden but may
-    // still be selected through this path.
-    if (OB_FAIL(schema_checker_->get_column_schema( table_id, column_name, column_schema, true, is_link))) {
+    // still be selected through this path. Explicit hidden-column reads also
+    // honor the existing OPT_PARAM visibility hint.
+    if (OB_FAIL(ret)) {
+    } else if (OB_FAIL(schema_checker_->get_column_schema( table_id, column_name, column_schema, true, is_link))) {
     } else if (!hidden && column_schema->is_hidden() && !column_schema->is_generated_column()) {
       ret = OB_ERR_BAD_FIELD_ERROR;
       LOG_INFO("do not get hidden column", K(table_id), K(column_name), K(ret));
