@@ -215,7 +215,7 @@ int ObStmtResolver::get_column_schema(const uint64_t table_id,
     ret = OB_NOT_INIT;
     SQL_RESV_LOG(WARN, "not init", K(ret), KP(schema_checker_), KP(session_info_));
   } else {
-    bool hidden = get_hidden || session_info_->is_inner();
+    bool hidden = get_hidden || session_info_->is_inner() || params_.is_ai_retry_;
     if (!hidden && params_.query_ctx_ != nullptr) {
       OZ(params_.query_ctx_->get_query_hint().get_global_hint().opt_params_.has_enable_opt_param(
           ObOptParamHint::OptParamType::HIDDEN_COLUMN_VISIBLE, hidden));
@@ -245,7 +245,7 @@ int ObStmtResolver::get_column_schema(const uint64_t table_id,
     ret = OB_NOT_INIT;
     SQL_RESV_LOG(WARN, "not init", K(ret), KP(schema_checker_), KP(session_info_));
   } else {
-    const bool hidden = get_hidden || session_info_->is_inner();
+    const bool hidden = get_hidden || session_info_->is_inner() || params_.is_ai_retry_;
     if (OB_FAIL(schema_checker_->get_column_schema( table_id, column_id, column_schema, hidden, is_link))) {
     }
   }
