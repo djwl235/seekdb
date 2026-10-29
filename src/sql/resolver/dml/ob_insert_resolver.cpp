@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_RESV
+#include "sql/ai_column/ai_column.h"
 #include "sql/resolver/dml/ob_insert_resolver.h"
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/rewrite/ob_transform_utils.h"
@@ -140,6 +141,7 @@ int ObInsertResolver::resolve_insert_clause(const ParseNode &node)
   if (OB_FAIL(ret)) {
   } else if (OB_FAIL(generate_autoinc_params(insert_stmt->get_insert_table_info()))) {
   } else if (OB_FAIL(generate_column_conv_function(insert_stmt->get_insert_table_info()))) {
+  } else if (OB_FAIL(apply_ai_insert_defaults(*this, insert_stmt->get_insert_table_info()))) {
   } else if (OB_FAIL(replace_gen_col_dependent_col(insert_stmt->get_insert_table_info()))) {
   }
   

@@ -374,6 +374,7 @@ END_P SET_VAR DELIMITER
 %type <node> sql_stmt stmt_list stmt opt_end_p
 %type <node> select_stmt update_stmt delete_stmt
 %type <node> file_copy_stmt file_copy_source file_copy_options file_copy_option_list file_copy_option
+%type <node> ai_column_expression ai_column_arguments ai_column_argument ai_column_options
 %type <node> insert_stmt single_table_insert values_clause dml_table_name
 %type <node> create_table_stmt create_table_like_stmt fork_table_stmt fork_database_stmt diff_table_stmt merge_table_stmt opt_table_option_list table_option_list table_option table_option_list_space_seperated parallel_option lob_storage_clause lob_storage_parameter lob_storage_parameters lob_chunk_size
 %type <node> index_or_heap
@@ -6129,7 +6130,36 @@ column_attribute_list column_attribute
   $$ = $1;
 }
 
+ai_column_expression:
+relation_name '(' ai_column_arguments ')'
+{
+  ParseNode *arguments=NULL;
+  merge_nodes(arguments,result,T_EXPR_LIST,$3);
+  malloc_non_terminal_node($$,result->malloc_pool_,T_AI_COLUMN,3,$1,arguments,NULL);
+}
+;
+ai_column_arguments:
+ai_column_argument {$$=$1;}
+| ai_column_arguments ',' ai_column_argument {malloc_non_terminal_node($$,result->malloc_pool_,T_LINK_NODE,2,$1,$3);}
+;
+ai_column_argument:
+expr
+{
+  malloc_non_terminal_node($$,result->malloc_pool_,T_AI_COLUMN_ARGUMENT,1,$1);
+  dup_expr_string($$,result,@1.first_column,@1.last_column);
+}
+;
+ai_column_options:
+/*empty*/ {$$=NULL;}
+| WITH '(' expr_list ')' {merge_nodes($$,result,T_EXPR_LIST,$3);}
+;
+
 column_attribute:
+AI COLUMN '(' ai_column_expression ')' ai_column_options
+{
+  $$=$4;$$->children_[2]=$6;
+}
+|
 not NULLX
 {
   (void)($1) ;

@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_RESV
+#include "sql/ai_column/ai_column.h"
 #include "sql/resolver/ddl/ob_create_table_resolver.h"
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/resolver/ddl/ob_fts_index_builder_util.h"
@@ -375,6 +376,11 @@ int ObCreateTableResolver::resolve(const ParseNode &parse_tree)
           } else {
             create_table_stmt->set_database_id(OB_INVALID_ID);
           }
+        }
+        if (OB_SUCC(ret)) {
+          ObTableSchema &schema = create_table_stmt->get_create_table_arg().schema_;
+          OZ (prepare_ai_columns(schema, *allocator_));
+          cur_column_id_ = schema.get_max_used_column_id();
         }
         // put after parsing temporary table information settings, because it involves error checking for foreign key reference not supported by temporary tables
         if (OB_SUCC(ret)) {

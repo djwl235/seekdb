@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_RESV
+#include "sql/ai_column/ai_column.h"
 #include "config_bridge.h"
 #include "sql/resolver/ddl/ob_alter_table_resolver.h"
 #include "sql/resolver/expr/ob_raw_expr_part_expr_checker.h"
@@ -729,6 +730,9 @@ int ObAlterTableResolver::resolve_action_list(const ParseNode &node)
           LOG_USER_ERROR(OB_NOT_SUPPORTED, "Add/modify constraint together with other DDLs");
         }
       }
+    }
+    if (OB_SUCC(ret)) {
+      OZ (prepare_ai_alter_columns(alter_table_stmt->get_alter_table_arg().alter_table_schema_, *table_schema_, *allocator_));
     }
     if (OB_SUCC(ret) && OB_FAIL(check_alter_column_schemas_valid(*alter_table_stmt))) {
     }
@@ -3378,7 +3382,8 @@ int ObAlterTableResolver::process_timestamp_column(ObColumnResolveStat &stat,
   if (NULL == session_info_) {
     ret = OB_ERR_UNEXPECTED;
     SQL_RESV_LOG(WARN, "session info is NULL", K(ret));
-  } else if (OB_FAIL(alter_column_schema.set_orig_default_value(cur_default_value))) {
+  } else if (!alter_column_schema.is_ai_column()
+             && OB_FAIL(alter_column_schema.set_orig_default_value(cur_default_value))) {
   } else if (OB_FAIL(session_info_->get_explicit_defaults_for_timestamp(explicit_value))) {
   } else if (true == explicit_value || alter_column_schema.is_generated_column()) {
     //nothing to do

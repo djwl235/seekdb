@@ -15,6 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SQL_RESV
+#include "sql/ai_column/ai_column.h"
 #include "sql/table_function/table_function.h"
 #include "config_bridge.h"
 #include "ob_dml_resolver.h"
@@ -2358,6 +2359,15 @@ int ObDMLResolver::resolve_basic_table_without_cte(const ParseNode &parse_tree, 
     }
   }
 
+  if (table_node->type_ == T_RELATION_FACTOR) {
+    ObString name, database; bool explicit_database=false;
+    OZ (resolve_table_relation_node_v2(table_node, name, database, explicit_database));
+    if (OB_SUCC(ret) && database.case_compare("oceanbase") == 0 &&
+        (name.case_compare("__all_ai_column") == 0 || name.case_compare("__all_ai_column_task") == 0)) {
+      ObString catalog_alias = alias_node == nullptr ? name : ObString(alias_node->str_len_, alias_node->str_value_);
+      return bind_ai_column_catalog(*this, name.case_compare("__all_ai_column_task") == 0, catalog_alias, table_item);
+    }
+  }
   if (OB_FAIL(resolve_table_relation_factor_wrapper(table_node,
                                                     database_id,
                                                     table_name,
