@@ -156,7 +156,8 @@ void replace_description_call(ParseNode *&node, ParseNode *call)
 int ObShowResolver::resolve_table_function_description(const ParseNode &node)
 {
   int ret = OB_SUCCESS;
-  if (node.type_ == T_DESCRIBE_TABLE_FUNCTION && node.value_ == 1) {
+  if (node.type_ == T_DESCRIBE_TABLE_FUNCTION && node.num_child_ == 1 &&
+      node.children_[0] != nullptr && node.children_[0]->type_ == T_SELECT) {
     ObResolverParams bind_params = params_;
     ObSelectResolver binder(bind_params);
     ObSqlString description;

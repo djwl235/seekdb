@@ -132,12 +132,12 @@ int normalize_arguments(ObDMLResolver &resolver, const TableFunctionCall &call,
     const ParseNode *arg = call.arguments_->children_[i];
     if (arg->type_ != T_OP_EQ || arg->num_child_ != 2 ||
         arg->children_[0]->type_ != T_COLUMN_REF) {
-      ret = OB_ERR_PARSER_SYNTAX;
+      ret = OB_ERR_PARSE_SQL;
     } else {
       const ParseNode *lhs = arg->children_[0];
       const ParseNode *name = lhs->children_[lhs->num_child_ - 1];
       if (name == nullptr) {
-        ret = OB_ERR_PARSER_SYNTAX;
+        ret = OB_ERR_PARSE_SQL;
       } else {
         std::string key(name->str_value_, name->str_len_);
         for (char &c : key) {
@@ -146,7 +146,7 @@ int normalize_arguments(ObDMLResolver &resolver, const TableFunctionCall &call,
         const ParseNode *value = arg->children_[1];
         std::string json;
         if (!seen.insert(key).second) {
-          ret = OB_ERR_PARSER_SYNTAX;
+          ret = OB_ERR_PARSE_SQL;
         } else if (key == "sample_size") {
           const bool all = value->type_ == T_INT && value->value_ == -1;
           const bool negative = value->type_ == T_OP_NEG &&
@@ -160,7 +160,7 @@ int normalize_arguments(ObDMLResolver &resolver, const TableFunctionCall &call,
           }
         } else if (key == "header") {
           if (value->type_ != T_BOOL && value->type_ != T_INT) {
-            ret = OB_ERR_PARSER_SYNTAX;
+            ret = OB_ERR_PARSE_SQL;
           } else {
             json = value->value_ ? "true" : "false";
           }
@@ -170,12 +170,13 @@ int normalize_arguments(ObDMLResolver &resolver, const TableFunctionCall &call,
           OZ(resolver.resolve_str_const(*value, text));
           if (OB_SUCC(ret)) {
             if (key == "format") {
-              const std::string f = string_value(text);
+              std::string f = string_value(text);
+              for (char &c : f) { c = static_cast<char>(tolower(static_cast<unsigned char>(c))); }
               if ((call.descriptor_->id_ == READ_JSON_FUNCTION_ID &&
                    f != "newline_delimited" && f != "ndjson" && f != "jsonl") ||
                   (call.descriptor_->id_ == READ_CSV_FUNCTION_ID &&
                    f != "csv")) {
-                ret = OB_ERR_PARSER_SYNTAX;
+                ret = OB_ERR_PARSE_SQL;
               }
             } else {
               json = quote_json(string_value(text));
@@ -185,7 +186,7 @@ int normalize_arguments(ObDMLResolver &resolver, const TableFunctionCall &call,
             }
           }
         } else {
-          ret = OB_ERR_PARSER_SYNTAX;
+          ret = OB_ERR_PARSE_SQL;
         }
         if (OB_SUCC(ret) && !json.empty()) {
           if (options.size() > 1) {
@@ -197,6 +198,9 @@ int normalize_arguments(ObDMLResolver &resolver, const TableFunctionCall &call,
     }
   }
   options += '}';
+  if (ret == OB_ERR_PARSE_SQL) {
+    LOG_USER_ERROR(OB_ERR_PARSE_SQL, "Invalid file SQL option", 0, "", 1);
+  }
   return ret;
 }
 class FileTableScan final : public ITableFunctionScan {
@@ -379,6 +383,7 @@ int bind_file_table_function(ObDMLResolver &resolver,
     c.id_ = OB_APP_MIN_COLUMN_ID;
     c.type_.set_obj_type(ObVarcharType);
     c.type_.set_collation_type(CS_TYPE_UTF8MB4_BIN);
+      c.type_.set_collation_level(CS_LEVEL_IMPLICIT);
     c.type_.set_length(65535);
     columns.push_back(c);
   } else if (OB_SUCC(ret)) {
@@ -421,6 +426,7 @@ int bind_file_table_function(ObDMLResolver &resolver,
             default:
               c.type_.set_obj_type(ObVarcharType);
               c.type_.set_collation_type(CS_TYPE_UTF8MB4_BIN);
+      c.type_.set_collation_level(CS_LEVEL_IMPLICIT);
               c.type_.set_length(65535);
             }
             columns.push_back(c);
@@ -431,14 +437,17 @@ int bind_file_table_function(ObDMLResolver &resolver,
       descriptor.column_count_ = columns.size();
       TableFunctionCall normalized = call;
       normalized.descriptor_ = &descriptor;
+      ObString owned_path, owned_options;
+      OZ(ob_write_string(*resolver.allocator_, ObString(path.size(), path.data()), owned_path));
+      OZ(ob_write_string(*resolver.allocator_, ObString(options.size(), options.data()), owned_options));
       ParseNode arguments = {}, path_node = {}, options_node = {};
       ParseNode *args[] = {&path_node, &options_node};
       path_node.type_ = T_VARCHAR;
-      path_node.str_value_ = path.c_str();
-      path_node.str_len_ = path.size();
+      path_node.str_value_ = owned_path.ptr();
+      path_node.str_len_ = owned_path.length();
       options_node.type_ = T_VARCHAR;
-      options_node.str_value_ = options.c_str();
-      options_node.str_len_ = options.size();
+      options_node.str_value_ = owned_options.ptr();
+      options_node.str_len_ = owned_options.length();
       arguments.type_ = T_EXPR_LIST;
       arguments.children_ = args;
       arguments.num_child_ = 2;

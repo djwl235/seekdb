@@ -385,7 +385,7 @@ END_P SET_VAR DELIMITER
 %type <node> date_unit date_params timestamp_params
 %type <node> drop_table_stmt table_list drop_view_stmt table_or_tables
 %type <node> explain_stmt explainable_stmt format_name kill_stmt create_outline_stmt alter_outline_stmt drop_outline_stmt opt_outline_target
-%type <node> expr_list expr expr_const conf_const simple_expr simple_expr_list expr_or_default bit_expr bool_pri predicate explain_or_desc pl_expr_stmt
+%type <node> expr_list expr expr_const conf_const simple_expr expr_or_default bit_expr bool_pri predicate explain_or_desc pl_expr_stmt
 %type <node> column_ref multi_delete_table
 %type <node> case_expr func_expr in_expr sub_query_flag search_expr
 %type <node> case_arg when_clause_list when_clause case_default
@@ -1631,17 +1631,6 @@ simple_expr collation %prec NEG
 | USER_VARIABLE
 {
   malloc_non_terminal_node($$, result->malloc_pool_, T_OP_GET_USER_VAR, 1, $1);
-}
-;
-
-simple_expr_list:
-simple_expr
-{
-  malloc_list_node($$, result->malloc_pool_, T_EXPR_LIST, 2, 1, $1);
-}
-| simple_expr_list ',' simple_expr
-{
-  push_back_list(result->malloc_pool_, result, $$, $1, $3);
 }
 ;
 
@@ -8911,6 +8900,7 @@ COPY file_copy_source TO STRING_VALUE file_copy_options
   ParseNode *into = NULL;
   malloc_non_terminal_node(into, result->malloc_pool_, T_INTO_OUTFILE, 2, $4, $5);
   into->value_ = 1;
+  into->is_tree_not_param_ = 1;
   $$ = $2;
   if ($$->children_[PARSE_SELECT_INTO] != NULL || $$->children_[PARSE_SELECT_INTO_EXTRA] != NULL) {
     yyerror(&@2, result, "COPY source already has an INTO clause"); YYERROR;
@@ -12310,7 +12300,6 @@ explain_or_desc relation_factor opt_desc_column_option
 {
   if ($1 != NULL && $2->type_ == T_SELECT) {
     malloc_non_terminal_node($$, result->malloc_pool_, T_DESCRIBE_TABLE_FUNCTION, 1, $2);
-    $$->value_ = 1;
   } else { GEN_EXPLAN_STMT($1, $$, 0, 0, $2, NULL, NULL); }
 }
 | explain_or_desc PRETTY explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, T_PRETTY, $3, NULL, NULL);}
@@ -17490,7 +17479,7 @@ table_function_column_aliases:
 
 table_function_arguments:
 /* empty */ { $$ = NULL; }
-| simple_expr_list { $$ = $1; }
+| expr_list { $$ = $1; $$->is_tree_not_param_ = 1; }
 ;
 
 table_function_expr:
