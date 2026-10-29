@@ -387,12 +387,13 @@ int prepare_ai_alter_columns(AlterTableSchema &changes,
   for (auto it = changes.column_begin();
        OB_SUCC(ret) && it != changes.column_end(); ++it) {
     auto *column = static_cast<AlterColumnSchema *>(*it);
-    if (column->is_ai_column() && column->alter_type_ == OB_DDL_ADD_COLUMN) {
+    if (column->alter_type_ == OB_DDL_ADD_COLUMN) {
       ObColumnSchemaV2 copy;
       OZ(copy.assign(*column));
       copy.set_column_id(++next);
       OZ(combined.add_column(copy));
-      added.push_back(column);
+      if (column->is_ai_column())
+        added.push_back(column);
     }
   }
   combined.set_max_used_column_id(next);
