@@ -17,10 +17,11 @@ use std::{env, path::PathBuf};
 fn main() {
     let include = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("include");
     cxx_build::CFG.exported_header_dirs.push(&include);
-    cxx_build::bridge("src/bridge.rs")
+    cxx_build::bridges(["src/bridge.rs", "src/file_sql.rs"])
         .include("include")
         .std("c++17")
         .compile("local_cxx");
     println!("cargo:rerun-if-changed=src/bridge.rs");
+    println!("cargo:rerun-if-changed=src/file_sql.rs");
     println!("cargo:rerun-if-changed=include/callbacks.h");
 }

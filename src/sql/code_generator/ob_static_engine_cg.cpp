@@ -29,6 +29,7 @@
 #include "sql/optimizer/ob_log_insert.h"
 #include "sql/optimizer/ob_log_expr_values.h"
 #include "sql/optimizer/ob_log_function_table.h"
+#include "sql/table_function/file_table_function.h"
 #include "sql/optimizer/ob_log_json_table.h"
 #include "sql/optimizer/ob_log_values.h"
 #include "sql/optimizer/ob_log_subplan_filter.h"
@@ -5487,6 +5488,15 @@ int ObStaticEngineCG::generate_spec(ObLogSelectInto &op, ObSelectIntoSpec &spec,
       spec.parallel_ = op.get_parallel();
       spec.is_overwrite_ = op.get_is_overwrite();
       spec.plan_->need_drive_dml_query_ = true;
+      const ObSelectStmt *statement = static_cast<const ObSelectStmt *>(op.get_stmt());
+      const ObSelectIntoItem *into = statement->get_select_into();
+      if (into != nullptr && !into->copy_options_.empty()) {
+        ObSEArray<ObString, 16> names;
+        for (int64_t i=0; OB_SUCC(ret) && i<statement->get_select_item_size(); ++i) {
+          OZ (names.push_back(statement->get_select_item(i).alias_name_));
+        }
+        OZ (add_file_copy_names(alloc, into->copy_options_, names, spec.copy_options_));
+      }
     }
   }
   return ret;

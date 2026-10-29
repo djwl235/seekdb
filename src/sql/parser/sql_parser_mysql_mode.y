@@ -373,6 +373,7 @@ END_P SET_VAR DELIMITER
 //-----------------------------non_reserved keyword end---------------------------------------------
 %type <node> sql_stmt stmt_list stmt opt_end_p
 %type <node> select_stmt update_stmt delete_stmt
+%type <node> file_copy_stmt file_copy_source file_copy_options file_copy_option_list file_copy_option
 %type <node> insert_stmt single_table_insert values_clause dml_table_name
 %type <node> create_table_stmt create_table_like_stmt fork_table_stmt fork_database_stmt diff_table_stmt merge_table_stmt opt_table_option_list table_option_list table_option table_option_list_space_seperated parallel_option lob_storage_clause lob_storage_parameter lob_storage_parameters lob_chunk_size
 %type <node> index_or_heap
@@ -556,6 +557,7 @@ opt_end_p:
 /* only preparable statement will set question mark size */
 stmt:
     select_stmt             { $$ = $1; question_mark_issue($$, result); }
+  | file_copy_stmt          { $$ = $1; question_mark_issue($$, result); }
   | insert_stmt             { $$ = $1; question_mark_issue($$, result); }
   | create_table_stmt       {
     $$ = $1;
@@ -8903,6 +8905,60 @@ LIMIT limit_expr OFFSET limit_expr
 }
 ;
 
+file_copy_stmt:
+COPY file_copy_source TO STRING_VALUE file_copy_options
+{
+  ParseNode *into = NULL;
+  malloc_non_terminal_node(into, result->malloc_pool_, T_INTO_OUTFILE, 2, $4, $5);
+  into->value_ = 1;
+  $$ = $2;
+  if ($$->children_[PARSE_SELECT_INTO] != NULL || $$->children_[PARSE_SELECT_INTO_EXTRA] != NULL) {
+    yyerror(&@2, result, "COPY source already has an INTO clause"); YYERROR;
+  }
+  $$->children_[PARSE_SELECT_INTO_EXTRA] = into;
+}
+;
+file_copy_source:
+select_with_parens { $$ = $1; }
+| tbl_name
+{
+  ParseNode *star=NULL,*projection=NULL,*columns=NULL,*tables=NULL;
+  malloc_terminal_node(star,result->malloc_pool_,T_STAR);
+  malloc_non_terminal_node(projection,result->malloc_pool_,T_PROJECT_STRING,1,star);
+  merge_nodes(columns,result,T_PROJECT_LIST,projection);
+  merge_nodes(tables,result,T_FROM_LIST,$1);
+  malloc_select_node($$,result->malloc_pool_);
+  $$->children_[PARSE_SELECT_SELECT]=columns;$$->children_[PARSE_SELECT_FROM]=tables;
+}
+;
+file_copy_options:
+/*empty*/ {$$=NULL;}
+| '(' file_copy_option_list ')' {merge_nodes($$,result,T_EXPR_LIST,$2);}
+;
+file_copy_option_list:
+file_copy_option {$$=$1;}
+| file_copy_option_list ',' file_copy_option {malloc_non_terminal_node($$,result->malloc_pool_,T_LINK_NODE,2,$1,$3);}
+;
+file_copy_option:
+column_name literal
+{
+  ParseNode *key=NULL;malloc_non_terminal_node(key,result->malloc_pool_,T_COLUMN_REF,3,NULL,NULL,$1);
+  malloc_non_terminal_node($$,result->malloc_pool_,T_OP_EQ,2,key,$2);
+}
+| column_name
+{
+  ParseNode *key=NULL,*value=NULL;malloc_non_terminal_node(key,result->malloc_pool_,T_COLUMN_REF,3,NULL,NULL,$1);
+  malloc_terminal_node(value,result->malloc_pool_,T_BOOL);value->value_=1;
+  malloc_non_terminal_node($$,result->malloc_pool_,T_OP_EQ,2,key,value);
+}
+| FORMAT relation_name
+{
+  ParseNode *key=NULL,*name=NULL;make_name_node(name,result->malloc_pool_,"format");
+  malloc_non_terminal_node(key,result->malloc_pool_,T_COLUMN_REF,3,NULL,NULL,name);
+  $2->type_=T_VARCHAR;malloc_non_terminal_node($$,result->malloc_pool_,T_OP_EQ,2,key,$2);
+}
+;
+
 into_clause:
 INTO OUTFILE STRING_VALUE opt_charset field_opt line_opt file_opt
 {
@@ -12250,7 +12306,13 @@ explain_or_desc relation_factor opt_desc_column_option
   malloc_non_terminal_node($$, result->malloc_pool_, T_SHOW_COLUMNS, 4, $$, $2, NULL, $3);
 }
 
-| explain_or_desc explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, 0, $2, NULL, NULL);}
+| explain_or_desc explainable_stmt
+{
+  if ($1 != NULL && $2->type_ == T_SELECT) {
+    malloc_non_terminal_node($$, result->malloc_pool_, T_DESCRIBE_TABLE_FUNCTION, 1, $2);
+    $$->value_ = 1;
+  } else { GEN_EXPLAN_STMT($1, $$, 0, 0, $2, NULL, NULL); }
+}
 | explain_or_desc PRETTY explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, T_PRETTY, $3, NULL, NULL);}
 | explain_or_desc PRETTY_COLOR explainable_stmt { GEN_EXPLAN_STMT($1, $$, 0, T_PRETTY_COLOR, $3, NULL, NULL);}
 
@@ -12291,8 +12353,8 @@ explain_or_desc relation_factor opt_desc_column_option
 
 explain_or_desc:
 EXPLAIN {$$ = NULL;}
-| DESCRIBE {$$ = NULL;}
-| DESC  {$$ = NULL;}
+| DESCRIBE {malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 1;}
+| DESC  {malloc_terminal_node($$, result->malloc_pool_, T_INT); $$->value_ = 1;}
 ;
 
 explainable_stmt:

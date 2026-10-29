@@ -156,6 +156,36 @@ void replace_description_call(ParseNode *&node, ParseNode *call)
 int ObShowResolver::resolve_table_function_description(const ParseNode &node)
 {
   int ret = OB_SUCCESS;
+  if (node.type_ == T_DESCRIBE_TABLE_FUNCTION && node.value_ == 1) {
+    ObResolverParams bind_params = params_;
+    ObSelectResolver binder(bind_params);
+    ObSqlString description;
+    OZ (binder.resolve(*node.children_[0]));
+    ObSelectStmt *bound = binder.get_select_stmt();
+    CK (bound != nullptr);
+    for (int64_t i = 0; OB_SUCC(ret) && i < bound->get_select_item_size(); ++i) {
+      const SelectItem &item = bound->get_select_item(i);
+      const char *type = nullptr;
+      switch (item.expr_->get_data_type()) {
+        case ObIntType: type = "BIGINT"; break;
+        case ObDoubleType: type = "DOUBLE"; break;
+        case ObTinyIntType: type = "BOOLEAN"; break;
+        case ObDateType: type = "DATE"; break;
+        case ObDateTimeType: type = "DATETIME"; break;
+        case ObVarcharType: type = "VARCHAR"; break;
+        default: type = ob_obj_type_str(item.expr_->get_data_type());
+      }
+      if (i != 0) { OZ (description.append(" UNION ALL ")); }
+      OZ (description.append("SELECT "));
+      OZ (append_table_function_text(description, item.alias_name_));
+      OZ (description.append(" AS column_name,"));
+      OZ (append_table_function_text(description, ObString::make_string(type)));
+      OZ (description.append_fmt(" AS column_type,'%s' AS `null`,NULL AS `key`,NULL AS `default`,NULL AS extra",
+          item.expr_->is_not_null_for_read() ? "NO" : "YES"));
+    }
+    if (OB_SUCC(ret)) { ret = parse_and_resolve_select_sql(description.string()); }
+    return ret;
+  }
   ObSEArray<const TableFunctionDescriptor *, 16> descriptors;
   ObSEArray<ObString, 16> names;
   ObSEArray<ObObjType, 16> types;
