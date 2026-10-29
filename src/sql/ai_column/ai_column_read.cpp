@@ -104,6 +104,7 @@ int check_ai_read_columns(ObExecContext &ctx, const ObIArray<uint64_t> &ids) {
   OZ(nested->begin_nested_session(saved_session, saved_connection, true));
   if (OB_FAIL(ret))
     return ret;
+  uint64_t unfinished_table = OB_INVALID_ID, unfinished_column = OB_INVALID_ID;
   for (int64_t i = 0; OB_SUCC(ret) && i + 1 < ids.count(); i += 2) {
     const ObTableSchema *table = nullptr;
     const ObDatabaseSchema *db = nullptr;
@@ -139,7 +140,8 @@ int check_ai_read_columns(ObExecContext &ctx, const ObIArray<uint64_t> &ids) {
       const int next = result.get_result()->next();
       if (next == OB_SUCCESS) {
         ret = OB_AI_COLUMN_NOT_READY;
-        LOG_USER_ERROR(OB_AI_COLUMN_NOT_READY, ids.at(i), ids.at(i + 1));
+        unfinished_table = ids.at(i);
+        unfinished_column = ids.at(i + 1);
       } else if (next != OB_ITER_END)
         ret = next;
     }
@@ -148,6 +150,9 @@ int check_ai_read_columns(ObExecContext &ctx, const ObIArray<uint64_t> &ids) {
       nested->end_nested_session(saved_session, saved_connection);
   if (OB_SUCC(ret))
     ret = restored;
+  if (ret == OB_AI_COLUMN_NOT_READY) {
+    LOG_USER_ERROR(OB_AI_COLUMN_NOT_READY, unfinished_table, unfinished_column);
+  }
   return ret;
 }
 } // namespace sql
