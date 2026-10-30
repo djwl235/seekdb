@@ -39,7 +39,7 @@ public:
                 ObFTCacheRangeContainer *range_container,
                 const ObFTDictDesc &desc)
       : is_inited_(false), desc_(desc), range_alloc_(lib::ObMemAttr("Range Dict")),
-        range_dicts_(&range_alloc_), range_container_(range_container)
+        range_dicts_(&range_alloc_), range_container_(range_container), codepoint_ranges_(false)
   {
   }
   ~ObFTRangeDict() override{};
@@ -50,6 +50,8 @@ public:
     ObFTSingleWord start_;
     ObFTSingleWord end_;
     ObIFTDict *dict_; // a cache dict
+    ob_wc_t start_codepoint_;
+    ob_wc_t end_codepoint_;
   };
 
 public:
@@ -106,6 +108,7 @@ private:
   ObArenaAllocator range_alloc_;
   ObVector<ObFTRange, ObArenaAllocator> range_dicts_;
   ObFTCacheRangeContainer *range_container_; // only used to read cache
+  bool codepoint_ranges_;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(ObFTRangeDict);

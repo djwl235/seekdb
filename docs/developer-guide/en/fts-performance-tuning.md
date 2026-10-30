@@ -197,8 +197,8 @@ nearby timing range. The wrapper's Darwin maximum-child-RSS readings were
 short-lived client children, not a whole-system memory measurement.
 
 The preceding tokenizer-only submission 80a277c actually received **4.050/50**
-online, despite IK tokenization improving from 0.0747 to 0.0712 ms. The highest
-verified score remains 793011f's **15.078/50**. Under the public positive-weight
+online, despite IK tokenization improving from 0.0747 to 0.0712 ms. The then-highest
+verified score was 793011f's **15.078/50**. Under the public positive-weight
 formula, the two nine-metric sets and reported improvements cannot both use the
 same fixed baseline. The actual online scoring inputs remain unresolved; this
 construction change still requires its own online evaluation.
@@ -208,7 +208,7 @@ construction change still requires its own online evaluation.
 
 Online 85d1048 completed successfully at **21.849/50** (mean 0.2184891284).
 Its total construction time fell from the previous submission's 16.451 s to
-8.672 s, with unchanged hit counts. This is the current verified online score.
+8.672 s, with unchanged hit counts. This was the verified online score before the short-union follow-up.
 
 The execution-only membership path now returns a positive posting contribution
 directly, avoiding temporary relevance-datum writes and copies. For one to eight
@@ -231,3 +231,36 @@ query_cn 0.8299 -> 0.6734 ms, query_beng 1.2039 -> 0.9941 ms and query_mixed
 0.9263 -> 0.7714 ms (16.7-18.9% reductions). LIMIT used the original path and
 measured 1.2086 -> 1.2301 ms. All hit counts matched. The official benchmark and
 scoring inputs are unchanged; these local readings are not an online score.
+
+
+## Predecoded dictionary-range boundaries
+
+Online 88b18ce completed successfully at **33.698/50** (mean 0.3369793941).
+Chinese/English/mixed query times were 0.8023/1.2243/0.9438 ms, compared with
+1.1997/1.8277/1.3366 ms in the preceding run. LIMIT retained scoring and measured
+1.7389 ms. All four hit counts matched. Total construction was 8.169 s and
+IK/BENG TOKENIZE was 0.0663/0.0387 ms. This is the highest verified online score;
+it remains below 50/50.
+
+UTF8MB4_BIN dictionary ranges now retain decoded single-character boundaries.
+The search validates and decodes the input once, then binary-searches integer
+endpoints rather than decoding both operands in every collation comparison.
+The shortcut requires valid, ordered, disjoint single-character endpoints and
+the expected binary UTF-8 dictionary metadata. A space, invalid character,
+multi-character input or unsupported range layout retains the original collation
+comparison, including PAD SPACE behavior. Dictionary contents and cached DAT
+serialization do not change. Shared range metadata remains immutable.
+
+The full benchmark experienced a simultaneous SQL baseline increase from 0.0349
+to 0.1118 ms; those runs cannot attribute absolute differences to this change.
+An additional adjacent diagnostic used the SQL BENCHMARK function for 10,000
+TOKENIZE evaluations per sample, three samples after a 1,000-evaluation warmup.
+IK averaged 0.04657 ms before and 0.03980 ms after (about 14.5% reduction),
+while unchanged BENG measured 0.01165 and 0.01138 ms. This diagnostic reduces
+client round-trip effects and supplements, rather than replaces, the unchanged
+official benchmark and actual online evaluation.
+
+The standalone range-boundary candidate passed the native release build, all
+eleven regression cases, and the 204-case Unicode/collation/mode differential
+against the original binary. An experimental CJK prefix-array change was removed
+because its separate performance benefit was not established.
