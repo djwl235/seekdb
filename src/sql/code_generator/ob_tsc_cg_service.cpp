@@ -1916,6 +1916,40 @@ int ObTscCgService::generate_text_ir_ctdef(const ObLogTableScan &op,
     }
   }
 
+  // A scalar aggregate observes membership, not the ordering or magnitude of
+  // a sole positive natural-language MATCH filter. Retain all generated
+  // expressions and child definitions; only execution may omit BM25 work.
+  const ObDMLStmt *stmt = op.get_stmt();
+  const ObRawExpr *match_pred = tr_info.pushdown_match_filter_;
+  if (OB_SUCC(ret) && stmt != nullptr && stmt->is_select_stmt() && !stmt->has_subquery()
+      && !cg_ctx.is_func_lookup_ && !cg_ctx.is_vec_iter_func_lookup_ && !cg_ctx.is_es_match_
+      && !cg_ctx.is_merge_fts_index_ && tr_info.need_calc_relevance_
+      && NATURAL_LANGUAGE_MODE == match_against->get_mode_flag()
+      && match_against->get_columns_boosts().empty() && !tr_info.need_sort()
+      && !tr_info.need_block_max_scan() && nullptr == tr_info.topk_limit_expr_
+      && match_pred != nullptr && T_OP_BOOL == match_pred->get_expr_type()
+      && 1 == match_pred->get_param_count() && match_pred->get_param_expr(0) == match_against) {
+    const ObSelectStmt *select_stmt = static_cast<const ObSelectStmt *>(stmt);
+    if (select_stmt->is_scala_group_by() && !select_stmt->has_limit()
+        && !select_stmt->has_order_by() && !select_stmt->is_match_topk()) {
+      ObSEArray<ObRawExpr *, 16> relation_exprs;
+      bool only_membership = true;
+      bool found_predicate = false;
+      if (OB_FAIL(select_stmt->get_relation_exprs(relation_exprs))) {
+      } else {
+        for (int64_t i = 0; only_membership && i < relation_exprs.count(); ++i) {
+          const ObRawExpr *expr = relation_exprs.at(i);
+          if (expr == match_pred) {
+            found_predicate = true;
+          } else if (expr->has_flag(CNT_MATCH_EXPR) || expr->has_flag(IS_MATCH_EXPR)) {
+            only_membership = false;
+          }
+        }
+        ir_scan_ctdef->boolean_filter_only_ = only_membership && found_predicate;
+      }
+    }
+  }
+
   if (OB_SUCC(ret) && tr_info.need_sort()) {
     ObSEArray<OrderItem, 2> order_items;
     if (OB_FAIL(order_items.push_back(tr_info.sort_key_))) {

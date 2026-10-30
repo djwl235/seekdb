@@ -367,6 +367,7 @@ int ObDASLegacyTRMergeIter::init_dim_iter_param(ObTextRetrievalScanIterParam &it
     iter_param.inv_scan_doc_length_col_ = ir_ctdef_->inv_scan_doc_length_col_;
     iter_param.inv_scan_domain_id_col_ = ir_ctdef_->inv_scan_domain_id_col_;
     iter_param.inv_idx_agg_cache_mode_ = function_lookup_mode_ && !taat_mode_;
+    iter_param.boolean_filter_only_ = ir_ctdef_->boolean_filter_only_ && daat_mode_;
   }
   return ret;
 }
@@ -382,6 +383,12 @@ int ObDASLegacyTRMergeIter::create_sparse_retrieval_iter()
   sr_iter_param_.relevance_proj_expr_ = ir_ctdef_->relevance_proj_col_;
   sr_iter_param_.filter_expr_ = ir_ctdef_->match_filter_;
   sr_iter_param_.topk_limit_ = topk_limit_;
+  sr_iter_param_.boolean_filter_only_ = ir_ctdef_->boolean_filter_only_ && daat_mode_;
+  if (sr_iter_param_.boolean_filter_only_) {
+    // The sole pushed filter is BOOL(MATCH); every emitted posting union row
+    // has positive relevance. Avoid interpreting the same predicate per row.
+    sr_iter_param_.filter_expr_ = nullptr;
+  }
   if (OB_NOT_NULL(ir_ctdef_->field_boost_expr_)) {
     ObDatum *boost_datum = nullptr;
     if (OB_FAIL(ir_ctdef_->field_boost_expr_->eval(*ir_rtdef_->eval_ctx_, boost_datum))) {

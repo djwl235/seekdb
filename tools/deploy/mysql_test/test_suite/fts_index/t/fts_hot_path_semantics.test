@@ -36,6 +36,16 @@ SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('the about');
 SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta') AND id > 1;
 # Numeric score uses and Boolean mode must retain scoring and their filters.
 SELECT COUNT(*), ROUND(SUM(MATCH(body) AGAINST('alpha beta')), 6) > 0 AS scored FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+# Numeric aggregate and nested score uses must not enter membership-only execution.
+SELECT COUNT(*), ROUND(SUM(MATCH(body) AGAINST('alpha beta')), 8) AS total_score,
+ ROUND(AVG(MATCH(body) AGAINST('alpha beta')), 8) AS mean_score
+ FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta')
+ HAVING SUM(MATCH(body) AGAINST('alpha beta')) > 0.5;
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta')
+ AND MATCH(body) AGAINST('alpha beta') > 0.3;
+SELECT COUNT(*) FROM (SELECT id, MATCH(body) AGAINST('alpha beta') AS score
+ FROM docs WHERE MATCH(body) AGAINST('alpha beta')) scored_docs WHERE score > 0.3;
 SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta') > 0.1;
 SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta') < 100;
 SELECT id, MATCH(body) AGAINST('alpha beta') > 0 AS scored FROM docs WHERE MATCH(body) AGAINST('alpha beta') ORDER BY MATCH(body) AGAINST('alpha beta') DESC, id;
@@ -47,6 +57,13 @@ SET @term = 'alpha';
 EXECUTE p USING @term;
 SET @term = 'beta';
 EXECUTE p USING @term;
+DEALLOCATE PREPARE p;
+# Shared MATCH expression use through prepared-statement parameters still scores.
+PREPARE p FROM 'SELECT COUNT(*), ROUND(SUM(MATCH(body) AGAINST(?)), 8) FROM docs WHERE MATCH(body) AGAINST(?)';
+SET @term = 'alpha beta';
+EXECUTE p USING @term, @term;
+SET @term = 'alpha';
+EXECUTE p USING @term, @term;
 DEALLOCATE PREPARE p;
 # Posting-list membership must follow transactional updates and rollback.
 START TRANSACTION;

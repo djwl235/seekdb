@@ -47,6 +47,7 @@ ObTextRetrievalTokenIter::ObTextRetrievalTokenIter()
     advance_doc_id_(),
     token_doc_cnt_calculated_(false),
     inv_idx_agg_cache_mode_(false),
+    boolean_filter_only_(false),
     is_inited_(false)
 {
 }
@@ -67,6 +68,7 @@ int ObTextRetrievalTokenIter::init(const ObTextRetrievalScanIterParam &iter_para
   inv_scan_domain_id_col_ = iter_param.inv_scan_domain_id_col_;
   max_batch_size_ = OB_MAX(iter_param.eval_ctx_->max_batch_size_, 1);
   inv_idx_agg_cache_mode_ = iter_param.inv_idx_agg_cache_mode_;
+  boolean_filter_only_ = iter_param.boolean_filter_only_;
 
   if (OB_ISNULL(inv_idx_scan_iter_) || OB_ISNULL(eval_ctx_) || OB_ISNULL(inv_idx_scan_param_) ||
       OB_ISNULL(inv_scan_domain_id_col_) || OB_ISNULL(allocator_) || OB_ISNULL(mem_context_.ref_context())) {
@@ -203,12 +205,14 @@ int ObTextRetrievalTokenIter::get_next_row()
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
-  } else if (!token_doc_cnt_calculated_ && OB_FAIL(estimate_token_doc_cnt())) {
+  } else if (!boolean_filter_only_ && !token_doc_cnt_calculated_ && OB_FAIL(estimate_token_doc_cnt())) {
   } else if (OB_FAIL(query::das_scan_next_row(inv_idx_scan_iter_))) {
     if (OB_UNLIKELY(OB_ITER_END != ret)) {
     }
   } else {
-    if (need_calc_relevance()) {
+    if (boolean_filter_only_) {
+      fill_boolean_relevance(1);
+    } else if (need_calc_relevance()) {
       clear_row_wise_evaluated_flag();
       if (OB_FAIL(fill_token_doc_cnt())) {
       } else if (OB_FAIL(fill_token_weight())) {
@@ -236,13 +240,26 @@ int ObTextRetrievalTokenIter::batch_eval_relevance_expr(const int64_t count)
   return ret;
 }
 
+void ObTextRetrievalTokenIter::fill_boolean_relevance(const int64_t count)
+{
+  // BM25 clamps IDF to a positive epsilon and average document length to a
+  // positive default. A posting with positive term frequency is therefore a
+  // true natural-language predicate. Its numeric score is unobservable here.
+  ObEvalCtx::BatchInfoScopeGuard guard(*eval_ctx_);
+  for (int64_t i = 0; i < count; ++i) {
+    guard.set_batch_idx(i);
+    relevance_expr_->locate_datum_for_write(*eval_ctx_).set_double(1.0);
+    relevance_expr_->set_evaluated_flag(*eval_ctx_);
+  }
+}
+
 int ObTextRetrievalTokenIter::get_next_batch(const int64_t capacity, int64_t &count)
 {
   int ret = OB_SUCCESS;
   count = 0;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
-  } else if (!token_doc_cnt_calculated_ && OB_FAIL(estimate_token_doc_cnt())) {
+  } else if (!boolean_filter_only_ && !token_doc_cnt_calculated_ && OB_FAIL(estimate_token_doc_cnt())) {
   } else if (OB_FAIL(query::das_scan_next_rows(
                  inv_idx_scan_iter_, count, OB_MIN(max_batch_size_, capacity)))) {
     if (OB_UNLIKELY(OB_ITER_END != ret)) {
@@ -252,6 +269,8 @@ int ObTextRetrievalTokenIter::get_next_batch(const int64_t capacity, int64_t &co
   }
 
   if (OB_FAIL(ret)) {
+  } else if (boolean_filter_only_) {
+    fill_boolean_relevance(count);
   } else if (need_calc_relevance()) {
     const sql::ObBitVector *skip = NULL;
     PRINT_VECTORIZED_ROWS(SQL, DEBUG, *eval_ctx_, *inv_idx_scan_param_->output_exprs_, count, skip);
@@ -501,8 +520,10 @@ int ObTextRetrievalDaaTTokenIter::save_relevances_and_docids()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(relevance_expr_) || OB_ISNULL(inv_scan_domain_id_col_)) {
     ret = OB_INVALID_ARGUMENT;
-  } else if (OB_FAIL(relevance_expr_->eval_batch(*eval_ctx_, *token_iter_->get_skip(), count_))) {
   } else {
+    // token_iter_->get_next_row/get_next_batch already evaluated this batch.
+    // Re-evaluating its argument expressions here duplicates work and would
+    // defeat the execution-only membership path.
     cur_idx_ = 0;
     const ObDatumVector &relevance_datum = relevance_expr_->locate_expr_datumvector(*eval_ctx_);
     const ObDatumVector &doc_id_datum = inv_scan_domain_id_col_->locate_expr_datumvector(*eval_ctx_);

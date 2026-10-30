@@ -1,168 +1,128 @@
-# Full-text tokenizer hot-path tuning
+# Full-text path tuning
 
-The full-text parser is shared by index construction, `TOKENIZE`, and query-token
-preparation. This change reduces repeated work there without changing the
-posting-list format, token rules, stopword filtering, or relevance calculation.
+Full-text work repeatedly decodes characters, creates parser-local dictionary
+wrappers, hashes duplicate words, compares binary document IDs through generic
+collation dispatch, and computes relevance for some aggregate queries that only
+observe membership. This change reduces that work while preserving tokenization,
+index contents, document membership, projected scores and ranking.
 
-## Bottlenecks and changes
+## Tokenization and dictionary changes
 
-* IK already reads a character's address, length and classification before
-  dispatching its processors. Pass those values to `do_process` rather than
-  fetching them twice again in each of the four processors. Processor order is
-  unchanged and none of the processors advances the cursor.
-* Character classification used to decode the same Unicode character separately
-  for each category predicate. Decode it once and evaluate the original category
-  predicates in their original order. UTF-8 and UTF-16 surrogate handling remain
-  distinct, including error propagation from decoding.
-* IK dictionaries are split into ordered, non-overlapping first-character ranges.
-  Binary-search their inclusive ends, then check the candidate's start. This
-  preserves both range endpoints and gaps while reducing collation comparisons.
-* BENG tokens consisting entirely of ASCII without uppercase letters already
-  have their lowercase form. Borrow the input slice for these tokens, retaining
-  charset conversion for uppercase and non-ASCII input. As before, the returned
-  normalizer buffer is valid until the next stream call; the full-text parser
-  continues to make its owning copy.
-* Try inserting a word before doing a separate lookup. Distinct words require
-  one lookup. Duplicate words still use the existing overwrite operation, which
-  preserves the last surface spelling when distinct byte strings compare equal
-  under a case/accent-insensitive collation. First-occurrence and duplicate
-  frequency accounting are unchanged.
+* Reuse the character address, length and classification already read before IK
+  processor dispatch. Decode Unicode once per classification, retaining the
+  original predicate order and UTF-8/UTF-16 surrogate distinctions.
+* Binary-search the ordered, disjoint first-character dictionary ranges using
+  their inclusive ends, then check the candidate start to preserve gaps.
+* Borrow already-lowercase ASCII BENG input slices. Uppercase and non-ASCII
+  input still use charset conversion; owning parser copies retain their lifetime.
+* Update duplicate-token key spelling and frequency in the existing hash-map
+  set_or_update callback under its bucket write lock. This preserves the last
+  surface spelling for collation-equal tokens, including cafe/café, while
+  avoiding repeated hashing and replacement-node allocation. Initial frequency
+  accounting is unchanged. Identical byte strings under supported binary or
+  UTF-8 metadata can compare equal directly; byte differences still use collation.
+* Replace IK arbitration's per-segment hash table with a small array and forward
+  cursor. Conflict groups are appended in increasing, disjoint offset order;
+  smart-mode selection takes a subset within each group and preserves that order.
+  The result lookup retains exact-start-offset and skipped-character behavior.
+* Share the three immutable built-in UTF-8 IK dictionaries through the process
+  parser hub. A dedicated initialization lock serializes cold construction;
+  only successful initialization is published with release/acquire semantics.
+  The hub retains the KV-cache handles alongside the range wrappers, so parser
+  destruction and cache eviction cannot invalidate borrowed dictionary data.
+  Failed initialization is not published and can be retried. There is no runtime
+  update path for these built-in dictionaries.
 
-No query-planning or relevance-calculation changes are included.
+The server releases the parser hub before destroying the global caches and their
+hazard-pointer domain. Shared DAT readers only read dictionary state; token-hit
+state remains local to each parser.
 
-A second pass replaces the per-segment IK arbitration hash table with a small
-array and a forward cursor. Conflict groups are appended in strictly increasing
-offset order; optimization chooses a subset of each group, so it preserves this
-ordering. Exact-offset matching and skipped characters are unchanged.
+## Retrieval changes
 
-For retrieval merge and BMW document-id comparisons, the 16-byte, non-null
-CHAR/VARCHAR case under binary collation uses a fixed-size byte comparison.
-Other lengths, collations, data types, nulls and sentinel values retain their
-original comparator. The result is normalized to -1/0/1. The binary collation
-implementation itself uses memcmp and length comparison; equal fixed lengths
-therefore have identical ordering.
+Fixed-length, non-null 16-byte CHAR/VARCHAR document IDs under binary collation
+use byte comparison in retrieval merge and BMW comparisons. This exactly matches
+that collation's memcmp-plus-length ordering. Other lengths, collations, types,
+nulls and sentinel values retain their original comparison paths.
 
-These two directions were also discussed in the public design notes of
-[upstream PR #2235](https://github.com/oceanbase/seekdb/pull/2235). This change
-implements them locally and retains the existing scoring and execution pipeline.
+A conservative execution flag applies only when a scalar aggregate uses a plain
+natural-language MATCH solely as its positive WHERE predicate. Code generation
+checks all statement relation expressions, rejecting score projections, numeric
+comparisons, HAVING score uses, Boolean mode, boosts, subqueries, sorting, limits,
+functional lookup and index merge. All generated child definitions, expressions
+and result columns remain present; the optimizer does not change the plan shape.
 
-## Correctness verification
+For that path, DAAT skips document-frequency estimation, BM25 calculation and
+reinterpreting BOOL(MATCH) for every row. Each posting contributes an internal
+positive value. Membership is equivalent because BM25 clamps IDF to a positive
+epsilon and average document length to a positive default, while posting term
+frequency is positive. Numeric scores are unobservable under the eligibility
+checks. The posting union, minimum-match accounting and projected document IDs
+remain unchanged. Scored and top-k queries retain their original calculations.
+The DAAT wrapper also reuses relevance already evaluated by its token iterator.
 
-`fts_index/fts_hot_path_semantics.test` covers token frequencies, repeated words,
-case and accent variants, stopwords, punctuation, empty input, fullwidth
-letters/digits, CJK, emoji, dictionary boundaries, long documents, both IK modes,
-scored queries, ranking, thresholds, Boolean queries, prepared statements, index
-construction, and transactional updates/rollback. Its expected results were
-recorded from the unmodified parent binary before comparing the optimized binary.
+Related directions appear in the public design notes of
+[upstream PR #2235](https://github.com/oceanbase/seekdb/pull/2235); the changes here
+were implemented locally and validated against the unmodified parent.
 
-The public benchmark, generator, SQL, scoring script and fixed baseline are
-unchanged. Full benchmark runs use all defaults: 20,000 rows, batches of 500,
-3,000 tokenizer repetitions, 200 query repetitions, three samples, 30 warmups,
-and `SKIP_LOAD=0`. Local runs use the same native release build and dedicated
-2 GiB test server for both versions. On macOS, an external Bash 5 runtime and a
-`date +%s%N` compatibility executable provide the facilities required by the
-unmodified Linux-oriented benchmark script.
+## Verification
 
-Local measurements and official evaluation results are recorded with the
-submission. Local timings cannot be treated as the official CI score.
+The native release build passed. Eleven regression cases passed, including
+fts_hot_path_semantics, tokenize_function, parser_properties, cn_word,
+basic_dml_sequel, create_fts_index_afterward, create_table_with_fts_index,
+drop_index, index_view, domain_id_merge_with_compare_null and simple_query.
 
-## Local full-run comparison
+The added oracle case covers token frequencies, case/accent variants, stopwords,
+punctuation, empty input, fullwidth characters, CJK, emoji, dictionary boundaries,
+long text, IK modes, binary keys containing NUL/high bytes, exact SUM/AVG scores,
+ranking/ties, thresholds, HAVING, nested scores, Boolean queries, prepared
+statements, index construction and transactional rollback. Expected results were
+recorded with the unmodified parent binary. A cold instance also completed 96
+concurrent/reconnect tokenizer calls across 16 clients, with output byte-identical
+to the parent. The CLI stop signal returned exit 0; its process exit bypasses
+cache teardown, so destructor ordering was checked in the server lifecycle code.
 
-The following pair used two newly initialized, otherwise identical test
-instances (parent binary `1412f7e`, then this patch). Values are seconds for
-index construction and milliseconds for tokenizer/query measurements.
+The existing partitioned-query expected result has a placeholder-number mismatch
+(:0/:1), with complete parent/candidate outputs byte-identical. The large
+basic-DML case reaches a legacy missing mapping-table metadata assertion on both
+versions. Existing tests and expected results were not altered to mask these.
+
+## Full benchmark
+
+The official benchmark, generator, SQL, scoring script and baseline are unchanged.
+Runs use all defaults: 20,000 documents, batches of 500, 3,000 tokenizer repetitions,
+200 query repetitions, three samples, 30 warmups and SKIP_LOAD=0. Mac compatibility
+executables supply GNU Bash and actual nanosecond time to the unmodified script.
+Both versions use the same native build configuration and dedicated 2 GiB server.
+
+The following fresh-instance comparison used parent 1412f7e immediately after the
+first membership candidate, followed by the final predicate-elision candidate.
+Values are seconds for construction and milliseconds for tokenizer/queries.
+Machine load varied markedly across earlier runs; those earlier timings must
+not be used to attribute current gains.
 
 | Metric | Parent | Optimized | Time reduction |
 | --- | ---: | ---: | ---: |
-| build_ik_all_sec | 9.9030 | 8.7760 | 11.38% |
-| build_ik_content_sec | 7.8210 | 6.7090 | 14.22% |
-| build_beng_en_sec | 3.7740 | 3.3740 | 10.60% |
-| tokenize_ik_avg_ms | 0.2139 | 0.1399 | 34.60% |
-| tokenize_beng_avg_ms | 0.1387 | 0.0820 | 40.88% |
-| query_cn_avg_ms | 2.1865 | 1.9585 | 10.43% |
-| query_beng_avg_ms | 3.1597 | 2.9687 | 6.04% |
-| query_mixed_avg_ms | 2.4208 | 2.1815 | 9.89% |
-| query_limit_avg_ms | 2.6388 | 2.6212 | 0.67% |
+| build_ik_all_sec | 4.6790 | 4.4690 | 4.49% |
+| build_ik_content_sec | 3.5500 | 3.3550 | 5.49% |
+| build_beng_en_sec | 1.9350 | 1.9380 | -0.16% |
+| tokenize_ik_avg_ms | 0.0788 | 0.0752 | 4.57% |
+| tokenize_beng_avg_ms | 0.0428 | 0.0431 | -0.70% |
+| query_cn_avg_ms | 0.9737 | 0.8459 | 13.13% |
+| query_beng_avg_ms | 1.4490 | 1.2442 | 14.13% |
+| query_mixed_avg_ms | 1.0948 | 0.9378 | 14.34% |
+| query_limit_avg_ms | 1.2731 | 1.2151 | 4.56% |
 
-All four query hit counts matched: 8,001 / 11,000 / 7,332 / 20.
-An earlier run reusing a test instance had a noisy LIMIT query measurement
-(4.6840 ms); the clean-instance repetition measured 2.6212 ms. Both full reports
-are retained rather than treating the outlier as a semantic or plan change.
-The two captured query plans are byte-identical. The checked-in CI-baseline
-scoring script gives this Mac run 100/100; this is a cross-machine reference
-only, not an official submission score.
+All hit counts matched: 8,001 / 11,000 / 7,332 / 20. Local timings are not official
+scores. The independent submission branch is based directly on official 5bce9e0,
+containing only this task's changes; local native builds reuse a parent checkout
+that also contains earlier AI/file features.
 
-Eleven regression cases passed unchanged, including the new baseline-oracle
-case. The partitioned-query case has an existing EXPLAIN placeholder-number
-difference (`:0` versus `:1`); its complete output is byte-identical between
-the parent and optimized binaries. The large basic-DML case also reaches an
-existing missing legacy mapping-table metadata assertion on both binaries.
+## Online scoring discrepancy
 
-## Second-pass validation and evaluation discrepancy
-
-The second pass again passed all eleven regression cases. The oracle case adds
-binary keys containing NUL and high bytes, multi-term merging, score ordering,
-ties and Boolean exclusion. Expected results were recorded with the parent
-binary. The full benchmark was repeated with fresh instances in the same session
-(candidate followed by parent). Earlier timings were about twice as slow even
-for unchanged operations, so they must not be used to attribute second-pass gains.
-
-| Metric | Parent (same session) | Current | Time reduction |
-| --- | ---: | ---: | ---: |
-| build_ik_all_sec | 4.8890 | 4.6730 | 4.42% |
-| build_ik_content_sec | 3.8850 | 3.5520 | 8.57% |
-| build_beng_en_sec | 2.0430 | 1.9430 | 4.89% |
-| tokenize_ik_avg_ms | 0.0843 | 0.0751 | 10.91% |
-| tokenize_beng_avg_ms | 0.0524 | 0.0444 | 15.27% |
-| query_cn_avg_ms | 1.2433 | 0.9840 | 20.86% |
-| query_beng_avg_ms | 1.5594 | 1.4101 | 9.57% |
-| query_mixed_avg_ms | 1.1976 | 1.0850 | 9.40% |
-| query_limit_avg_ms | 1.3730 | 1.2443 | 9.37% |
-
-Online submission 12af99f returned success but 0/50, with mean improvement
--0.413077. The unmodified official base 5bce9e0 was independently submitted
-and also returned 0/50, with mean improvement -0.104091. The first online
-metric set scores 100/100 (mean +0.785393) with the checked-in, unmodified
-public scoring function and baseline. The actual online scoring baseline is
-therefore unresolved. No benchmark, timing, baseline or scoring file was changed.
-
-## Shared immutable dictionary and duplicate-token update
-
-IK now borrows three immutable built-in dictionaries from the process parser
-hub. A cold dictionary is loaded or built under a dedicated initialization lock,
-and only fully initialized objects are published with release/acquire semantics.
-The hub retains each KV-cache handle together with its range wrappers, releasing
-wrappers before handles at parser-service shutdown. Hot parser initialization
-only loads three pointers. The existing dictionary builder and cache miss path
-remain in use, and failed initialization is not published. This applies to the
-three built-in UTF-8 dictionaries, which have no runtime update path.
-
-Duplicate-token aggregation uses the existing hash-map set_or_update callback
-to update both key spelling and count under the bucket write lock. Replacing
-the key with its collation-equivalent latest spelling preserves the existing
-TOKENIZE output. Distinct insertion retains the original initial count. This
-avoids repeated hashing and replacement-node allocation on duplicate tokens.
-Identical string bytes also bypass collation lookup for binary and UTF-8
-binary/general-ci metadata; byte differences still use the original comparator.
-
-All eleven regression cases passed. A cold instance additionally ran 96
-concurrent/reconnect tokenizer calls across 16 clients; every output matched
-the unmodified parent byte for byte. Shared DAT readers only read dictionary
-state; each parser retains its own token-hit state.
-
-| Metric | Parent | Shared dictionary / map update |
-| --- | ---: | ---: |
-| build_ik_all_sec | 8.8590 | 8.8610 |
-| build_ik_content_sec | 6.9060 | 7.0120 |
-| build_beng_en_sec | 3.8790 | 3.5700 |
-| tokenize_ik_avg_ms | 0.1482 | 0.1366 |
-| tokenize_beng_avg_ms | 0.0934 | 0.0879 |
-| query_cn_avg_ms | 2.0994 | 1.8898 |
-| query_beng_avg_ms | 2.9721 | 2.7526 |
-| query_mixed_avg_ms | 2.2003 | 2.1220 |
-| query_limit_avg_ms | 2.6934 | 2.4401 |
-
-This fresh-instance pair again shows machine-load variance. All four hit counts
-remain correct. Online second-pass submission 930e576 returned 0/50 and mean
-improvement -0.091495. Its raw metrics remain inconsistent with the public
-baseline; no official score is inferred from the local runs.
+Online 12af99f, official unmodified base 5bce9e0 and second-pass 930e576 all
+returned successful execution but 0/50. Their reported mean improvements were
+-0.413077, -0.104091 and -0.091495. The first raw metric set instead scores 100/100
+(mean +0.785393) using the checked-in, unmodified public scoring function and
+baseline. The actual online baseline remains unresolved. Raw reports and local
+comparisons are retained; no reference score is represented as an online score.
+The combined execution-path version requires a new online evaluation.

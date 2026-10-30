@@ -64,6 +64,23 @@ COUNT(*)
 SELECT COUNT(*), ROUND(SUM(MATCH(body) AGAINST('alpha beta')), 6) > 0 AS scored FROM docs WHERE MATCH(body) AGAINST('alpha beta');
 COUNT(*)	scored
 3	1
+SELECT COUNT(*), ROUND(SUM(MATCH(body) AGAINST('alpha beta')), 8) AS total_score,
+ROUND(AVG(MATCH(body) AGAINST('alpha beta')), 8) AS mean_score
+FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+COUNT(*)	total_score	mean_score
+3	3.47727768	1.15909256
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta')
+HAVING SUM(MATCH(body) AGAINST('alpha beta')) > 0.5;
+COUNT(*)
+3
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta')
+AND MATCH(body) AGAINST('alpha beta') > 0.3;
+COUNT(*)
+3
+SELECT COUNT(*) FROM (SELECT id, MATCH(body) AGAINST('alpha beta') AS score
+FROM docs WHERE MATCH(body) AGAINST('alpha beta')) scored_docs WHERE score > 0.3;
+COUNT(*)
+3
 SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta') > 0.1;
 COUNT(*)
 3
@@ -94,6 +111,16 @@ SET @term = 'beta';
 EXECUTE p USING @term;
 COUNT(*)
 2
+DEALLOCATE PREPARE p;
+PREPARE p FROM 'SELECT COUNT(*), ROUND(SUM(MATCH(body) AGAINST(?)), 8) FROM docs WHERE MATCH(body) AGAINST(?)';
+SET @term = 'alpha beta';
+EXECUTE p USING @term, @term;
+COUNT(*)	ROUND(SUM(MATCH(body) AGAINST(?)), 8)
+3	3.47727768
+SET @term = 'alpha';
+EXECUTE p USING @term, @term;
+COUNT(*)	ROUND(SUM(MATCH(body) AGAINST(?)), 8)
+2	1.82997747
 DEALLOCATE PREPARE p;
 START TRANSACTION;
 UPDATE docs SET body = 'alpha beta' WHERE id = 4;

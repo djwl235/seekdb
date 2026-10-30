@@ -45,7 +45,8 @@ struct ObTextRetrievalScanIterParam
       relevance_expr_(nullptr),
       inv_scan_doc_length_col_(nullptr),
       inv_scan_domain_id_col_(nullptr),
-      inv_idx_agg_cache_mode_(false)
+      inv_idx_agg_cache_mode_(false),
+      boolean_filter_only_(false)
   {}
 
   ObArenaAllocator *allocator_;
@@ -60,6 +61,7 @@ struct ObTextRetrievalScanIterParam
   sql::ObExpr *inv_scan_doc_length_col_;
   sql::ObExpr *inv_scan_domain_id_col_;
   bool inv_idx_agg_cache_mode_;
+  bool boolean_filter_only_;
 };
 
 class ObTextRetrievalTokenIter final : public ObISparseRetrievalDimIter
@@ -89,6 +91,7 @@ private:
   int fill_token_weight();
   int eval_relevance_expr();
   int batch_eval_relevance_expr(const int64_t count);
+  void fill_boolean_relevance(const int64_t count);
   int estimate_token_doc_cnt();
   inline bool need_inv_idx_agg() { return inv_idx_agg_iter_ != nullptr; }
   inline bool need_calc_relevance() { return inv_idx_agg_iter_ != nullptr; }
@@ -115,6 +118,7 @@ private:
   ObDocIdExt advance_doc_id_;
   bool token_doc_cnt_calculated_;
   bool inv_idx_agg_cache_mode_;
+  bool boolean_filter_only_;
   bool is_inited_;
   DISALLOW_COPY_AND_ASSIGN(ObTextRetrievalTokenIter);
 };
