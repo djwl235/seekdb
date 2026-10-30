@@ -1016,6 +1016,53 @@ int ObFTParserJsonProps::show_parser_properties(const ObFTParserJsonProps &prope
 int ObFTParserProperty::parse_for_parser_helper(const ObFTParser &parser, const ObString &json_str)
 {
   int ret = OB_SUCCESS;
+  // This final conversion only reads the exact JSON bytes, parser identity and
+  // compiled defaults. Retain one successful scalar result per worker; input
+  // validation/rebuilding at the caller is unchanged. No document data or JSON
+  // tree pointers are retained. Dictionary names below are static literals.
+  struct PropertyCache
+  {
+    bool valid_;
+    int64_t version_;
+    int64_t name_len_;
+    int64_t json_len_;
+    char name_[OB_FT_PARSER_NAME_LENGTH];
+    char json_[2048];
+    int kind_;
+    int64_t min_token_size_;
+    int64_t max_token_size_;
+    int64_t ngram_token_size_;
+    int64_t min_ngram_token_size_;
+    int64_t max_ngram_token_size_;
+    bool ik_mode_smart_;
+  };
+  static thread_local PropertyCache cache = {};
+  const auto &name = parser.get_parser_name();
+  const bool cacheable = name.len() > 0 && name.len() <= sizeof(cache.name_) &&
+                         json_str.length() >= 0 &&
+                         json_str.length() <= sizeof(cache.json_);
+  if (cacheable && cache.valid_ && cache.version_ == parser.get_parser_version() &&
+      cache.name_len_ == name.len() && cache.json_len_ == json_str.length() &&
+      0 == MEMCMP(cache.name_, name.str(), name.len()) &&
+      (json_str.empty() || 0 == MEMCMP(cache.json_, json_str.ptr(), json_str.length()))) {
+    // Only modify the fields this parser's original conversion would modify.
+    // A helper may be reset and reused with a different parser.
+    if (cache.kind_ == 0) {
+      dict_table_ = ObString(ObFTSLiteral::CONFIG_NAME_DICT_TABLE);
+      stopword_table_ = ObString(ObFTSLiteral::CONFIG_NAME_STOPWORD_TABLE);
+      quantifier_table_ = ObString(ObFTSLiteral::CONFIG_NAME_QUANTIFIER_TABLE);
+      ik_mode_smart_ = cache.ik_mode_smart_;
+    } else if (cache.kind_ == 1) {
+      min_token_size_ = cache.min_token_size_;
+      max_token_size_ = cache.max_token_size_;
+    } else if (cache.kind_ == 2) {
+      ngram_token_size_ = cache.ngram_token_size_;
+    } else if (cache.kind_ == 3) {
+      min_ngram_token_size_ = cache.min_ngram_token_size_;
+      max_ngram_token_size_ = cache.max_ngram_token_size_;
+    }
+    return OB_SUCCESS;
+  }
   ObFTParserJsonProps props;
   if (OB_FAIL(props.init())) {
   } else if (OB_FAIL(props.parse_from_valid_str(json_str))) {
@@ -1062,6 +1109,30 @@ int ObFTParserProperty::parse_for_parser_helper(const ObFTParser &parser, const 
       } else if (OB_FAIL(props.config_get_min_ngram_token_size(min_ngram_token_size_))) {
       } else if (OB_FAIL(props.config_get_max_ngram_token_size(max_ngram_token_size_))) {
       }
+    }
+  }
+  if (OB_SUCC(ret) && cacheable) {
+    const int kind = parser.is_ik() ? 0 : (parser.is_space() || parser.is_beng()) ? 1 :
+                     parser.is_ngram() ? 2 : parser.is_ngram2() ? 3 : -1;
+    if (kind >= 0) {
+      // No allocation or yielding operation occurs while reading or publishing
+      // the POD entry, so cooperative scheduling cannot expose a partial key.
+      cache.valid_ = false;
+      cache.kind_ = kind;
+      cache.version_ = parser.get_parser_version();
+      cache.name_len_ = name.len();
+      cache.json_len_ = json_str.length();
+      MEMCPY(cache.name_, name.str(), name.len());
+      if (!json_str.empty()) {
+        MEMCPY(cache.json_, json_str.ptr(), json_str.length());
+      }
+      cache.min_token_size_ = min_token_size_;
+      cache.max_token_size_ = max_token_size_;
+      cache.ngram_token_size_ = ngram_token_size_;
+      cache.min_ngram_token_size_ = min_ngram_token_size_;
+      cache.max_ngram_token_size_ = max_ngram_token_size_;
+      cache.ik_mode_smart_ = ik_mode_smart_;
+      cache.valid_ = true;
     }
   }
   return ret;

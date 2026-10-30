@@ -264,3 +264,24 @@ The standalone range-boundary candidate passed the native release build, all
 eleven regression cases, and the 204-case Unicode/collation/mode differential
 against the original binary. An experimental CJK prefix-array change was removed
 because its separate performance benefit was not established.
+
+
+## Reusing final scalar property conversion
+
+The final normalized-JSON-to-parser-property conversion retains one successful
+entry per worker, bounded to 2 KiB of JSON plus the exact parser name/version and
+scalar values. Caller validation/rebuilding remains unchanged, including explicit
+TOKENIZE configuration checks. A hit only updates the fields the original
+conversion updates for that parser; IK dictionary-name strings refer to static
+literals. No JSON tree, document pointer, token output or error is retained.
+Key reads and publication allocate nothing and cannot yield. Oversized inputs
+and cache misses use the original conversion.
+
+The native build and eleven regression cases passed, including default/custom
+configuration changes, invalid configuration followed by recovery, both IK modes,
+and ngram/space/ngram2 properties. A cold instance completed 120 concurrent and
+reconnect calls with output identical to the original binary. The diagnostic
+inner loop measured IK at about 0.03725 ms after range decoding's 0.03980 ms;
+BENG remained around 0.0115 ms without an established improvement. The complete
+official benchmark also ran, but its elevated SQL baseline prevents attributing
+absolute timing differences to this change.
