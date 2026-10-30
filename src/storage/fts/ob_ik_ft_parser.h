@@ -35,17 +35,10 @@ class ObIKFTParser final : public ObITokenIterator
 {
 public:
   ObIKFTParser(ObIAllocator &allocator, ObFTDictHub *hub)
-      : allocator_(allocator),
-        is_inited_(false),
-        coll_type_(ObCollationType::CS_TYPE_INVALID),
-        ctx_(nullptr),
-        hub_(hub),
-        segmenters_(allocator_),
-        dict_main_(nullptr),
-        dict_quan_(nullptr),
-        dict_stop_(nullptr)
-  {
-  }
+      : allocator_(allocator), is_inited_(false),
+        coll_type_(ObCollationType::CS_TYPE_INVALID), ctx_(nullptr), hub_(hub),
+        segmenters_{nullptr, nullptr, nullptr, nullptr}, dict_main_(nullptr),
+        dict_quan_(nullptr), dict_stop_(nullptr) {}
 
   virtual ~ObIKFTParser() { reset(); }
 
@@ -85,7 +78,8 @@ private:
   ObCollationType coll_type_;
   TokenizeContext *ctx_;
   ObFTDictHub *hub_;
-  ObList<ObIIKProcessor *, ObIAllocator> segmenters_;
+  // Fixed processing order: letters, quantifiers, CJK, surrogate pairs.
+  ObIIKProcessor *segmenters_[4];
 
   // Borrow immutable dictionaries owned and pinned by the parser hub.
   ObIFTDict *dict_main_;

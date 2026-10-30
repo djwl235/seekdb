@@ -10,7 +10,11 @@ index contents, document membership, projected scores and ranking.
 
 * Reuse the character address, length and classification already read before IK
   processor dispatch. Decode Unicode once per classification, retaining the
-  original predicate order and UTF-8/UTF-16 surrogate distinctions.
+  original predicate order and UTF-8/UTF-16 surrogate distinctions. For the
+  common UTF-8 collations, one existing validated Unicode decoder now supplies
+  both character width and classification. Invalid input and other collations
+  retain the original validation and error path. The fixed four IK processors
+  use an inline pointer array and concrete calls in the original order.
 * Binary-search the ordered, disjoint first-character dictionary ranges using
   their inclusive ends, then check the candidate start to preserve gaps.
 * Borrow already-lowercase ASCII BENG input slices. Uppercase and non-ASCII
@@ -32,6 +36,13 @@ index contents, document membership, projected scores and ranking.
   destruction and cache eviction cannot invalidate borrowed dictionary data.
   Failed initialization is not published and can be retried. There is no runtime
   update path for these built-in dictionaries.
+
+TOKENIZE also retains one bounded, successful default-configuration normalization
+per worker, keyed by the exact versioned parser name. Normalization depends on
+fixed UTF-8 binary metadata and compiled defaults. Explicit configurations still
+receive full validation; token input, output and errors are never cached. Cached
+bytes are copied to call-owned storage before use, including a stack snapshot
+before allocation to tolerate cooperative scheduling.
 
 The server releases the parser hub before destroying the global caches and their
 hazard-pointer domain. Shared DAT readers only read dictionary state; token-hit
@@ -76,9 +87,13 @@ punctuation, empty input, fullwidth characters, CJK, emoji, dictionary boundarie
 long text, IK modes, binary keys containing NUL/high bytes, exact SUM/AVG scores,
 ranking/ties, thresholds, HAVING, nested scores, Boolean queries, prepared
 statements, index construction and transactional rollback. Expected results were
-recorded with the unmodified parent binary. A cold instance also completed 96
+recorded with the unmodified parent binary. A cold instance also completed 120
 concurrent/reconnect tokenizer calls across 16 clients, with output byte-identical
-to the parent. The CLI stop signal returned exit 0; its process exit bypasses
+to the parent. Another 204-case differential run covered valid Unicode width
+boundaries, random mixed text, three UTF-8 collations, both IK modes and SQL
+conversion of malformed byte strings. Returned text, status and diagnostics
+matched the unmodified binary. These SQL conversion cases do not prove direct
+coverage of every invalid-byte decoder path. The CLI stop signal returned exit 0; its process exit bypasses
 cache teardown, so destructor ordering was checked in the server lifecycle code.
 
 The existing partitioned-query expected result has a placeholder-number mismatch
@@ -125,4 +140,18 @@ returned successful execution but 0/50. Their reported mean improvements were
 (mean +0.785393) using the checked-in, unmodified public scoring function and
 baseline. The actual online baseline remains unresolved. Raw reports and local
 comparisons are retained; no reference score is represented as an online score.
-The combined execution-path version requires a new online evaluation.
+The combined execution-path version 793011f completed its online evaluation on
+2026-10-30 at 13:05 and received **15.078/50**, with reported mean improvement
++0.150782329 and raw performance score 30.156466/100. The complete online metrics
+are retained separately. That is the verified online result, below full marks.
+
+## Follow-up tokenizer measurements
+
+A fresh adjacent comparison against the saved 793011f-equivalent binary, using
+all the same benchmark defaults, measured IK TOKENIZE at 0.0767 -> 0.0731 ms
+(4.69% reduction) and BENG at 0.0430 -> 0.0423 ms (1.63%). IK build times were
+4.377 -> 4.374 s and 3.348 -> 3.256 s; BENG was 1.839 -> 1.838 s. Query times were
+0.8297/1.2124/0.9322/1.2007 -> 0.8087/1.1652/0.9069/1.1930 ms, with identical hit
+counts. Only tokenization/configuration changed in this follow-up; differences
+in construction and retrieval timings are not attributed to a new query change.
+These local measurements are not a new online score.

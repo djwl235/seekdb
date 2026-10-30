@@ -21,6 +21,25 @@ SELECT TOKENIZE('ＡＢＣ１２３ abc123 3.14 一百二十三公斤 日本語 
 SELECT TOKENIZE('一一对应 中文分词 数据库 海洋 龍 龙 龟 龠 龢 龥 龦', 'ik', '[{"output":"all"}]');
 SELECT TOKENIZE('研究生命起源 南京市长江大桥 一百二十三公斤', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]');
 SELECT TOKENIZE('研究生命起源 南京市长江大桥 一百二十三公斤', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]');
+# UTF-8 width boundaries, embedded NUL/control bytes and supplementary planes.
+SELECT TOKENIZE(CONVERT(UNHEX('007F7FC280DFBFE0A080ED9FBFEE8080EFBFBFF0908080F48FBFBF') USING utf8mb4), 'ik', '[{"output":"all"}]');
+SELECT TOKENIZE('ＡＺａｚ０９〇零一二三十百千万亿两αβéñ日本語한글𠀀😀', 'ik', '[{"output":"all"}]');
+# Alternating default/custom configurations and parsers within one statement.
+SELECT TOKENIZE('研究生命起源', 'ik'), TOKENIZE('alpha ALPHA café', 'beng'),
+ TOKENIZE('研究生命起源', 'ik', '[{"additional_args":[{"ik_mode":"smart"}]}]');
+PREPARE tp FROM 'SELECT TOKENIZE(?, ?, ?)';
+SET @text = '研究生命起源 alpha ALPHA', @parser = 'ik', @options = '[]';
+EXECUTE tp USING @text, @parser, @options;
+SET @options = '[{"additional_args":[{"ik_mode":"smart"}]}]';
+EXECUTE tp USING @text, @parser, @options;
+SET @options = '[{"output":"invalid"}]';
+--error ER_WRONG_ARGUMENTS
+EXECUTE tp USING @text, @parser, @options;
+SET @options = '[]';
+EXECUTE tp USING @text, @parser, @options;
+SET @parser = 'beng', @options = '[{"output":"all"}]';
+EXECUTE tp USING @text, @parser, @options;
+DEALLOCATE PREPARE tp;
 SELECT TOKENIZE('中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，', 'ik', '[{"output":"all"}]');
 
 CREATE TABLE docs (id INT PRIMARY KEY, body TEXT, FULLTEXT INDEX ft(body) WITH PARSER beng);

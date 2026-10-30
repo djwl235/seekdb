@@ -375,6 +375,27 @@ int ObExprTokenize::parse_parser_properties(const ObExpr &expr,
 int ObExprTokenize::TokenizeParam::reform_parser_properties(const ObString &properties)
 {
   int ret = OB_SUCCESS;
+  // Default property normalization is a pure function of the versioned parser
+  // name and the fixed UTF-8 binary metadata used below. Keep one bounded
+  // entry per worker; explicit properties still take the full validation path.
+  struct DefaultPropertiesCache {
+    char parser_[storage::OB_FT_PARSER_NAME_LENGTH];
+    char properties_[2048];
+    int32_t parser_len_ = 0;
+    int32_t properties_len_ = 0;
+  };
+  static thread_local DefaultPropertiesCache defaults;
+  const bool use_defaults = properties.empty();
+  if (use_defaults && parser_name_.length() == defaults.parser_len_ &&
+      defaults.parser_len_ > 0 &&
+      MEMCMP(parser_name_.ptr(), defaults.parser_, defaults.parser_len_) == 0) {
+    // Snapshot before allocating: a cooperative worker can yield inside an
+    // allocator and another expression may replace its thread-local entry.
+    char snapshot[sizeof(defaults.properties_)];
+    const int32_t length = defaults.properties_len_;
+    MEMCPY(snapshot, defaults.properties_, length);
+    return ob_write_string(allocator_, ObString(length, snapshot), properties_);
+  }
   storage::ObFTParserJsonProps parser_properties;
 
   if (OB_FAIL(parser_properties.init())) {
@@ -386,6 +407,15 @@ int ObExprTokenize::TokenizeParam::reform_parser_properties(const ObString &prop
   } else if (OB_FAIL(parser_properties.to_format_json(allocator_, properties_))) {
   }
 
+  if (OB_SUCC(ret) && use_defaults &&
+      parser_name_.length() <= static_cast<int64_t>(sizeof(defaults.parser_)) &&
+      properties_.length() <=
+          static_cast<int64_t>(sizeof(defaults.properties_))) {
+    MEMCPY(defaults.parser_, parser_name_.ptr(), parser_name_.length());
+    MEMCPY(defaults.properties_, properties_.ptr(), properties_.length());
+    defaults.properties_len_ = properties_.length();
+    defaults.parser_len_ = parser_name_.length();
+  }
   return ret;
 }
 

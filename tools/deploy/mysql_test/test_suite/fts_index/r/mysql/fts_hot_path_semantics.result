@@ -36,6 +36,37 @@ TOKENIZE('研究生命起源 南京市长江大桥 一百二十三公斤', 'ik',
 SELECT TOKENIZE('研究生命起源 南京市长江大桥 一百二十三公斤', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]');
 TOKENIZE('研究生命起源 南京市长江大桥 一百二十三公斤', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]')
 {"tokens": [{"公斤": 1}, {"长江大桥": 1}, {"研究": 1}, {"起源": 1}, {"南京市": 1}, {"一百二十三": 1}, {"生命": 1}], "doc_len": 7}
+SELECT TOKENIZE(CONVERT(UNHEX('007F7FC280DFBFE0A080ED9FBFEE8080EFBFBFF0908080F48FBFBF') USING utf8mb4), 'ik', '[{"output":"all"}]');
+TOKENIZE(CONVERT(UNHEX('007F7FC280DFBFE0A080ED9FBFEE8080EFBFBFF0908080F48FBFBF') USING utf8mb4), 'ik', '[{"output":"all"}]')
+{"tokens": [], "doc_len": 0}
+SELECT TOKENIZE('ＡＺａｚ０９〇零一二三十百千万亿两αβéñ日本語한글𠀀😀', 'ik', '[{"output":"all"}]');
+TOKENIZE('ＡＺａｚ０９〇零一二三十百千万亿两αβéñ日本語한글𠀀😀', 'ik', '[{"output":"all"}]')
+{"tokens": [{"零一二三十百千万亿两": 1}, {"한": 1}, {"ａｚａｚ０９": 1}, {"語": 1}, {"글": 1}, {"日本": 1}], "doc_len": 6}
+SELECT TOKENIZE('研究生命起源', 'ik'), TOKENIZE('alpha ALPHA café', 'beng'),
+TOKENIZE('研究生命起源', 'ik', '[{"additional_args":[{"ik_mode":"smart"}]}]');
+TOKENIZE('研究生命起源', 'ik')	TOKENIZE('alpha ALPHA café', 'beng')	TOKENIZE('研究生命起源', 'ik', '[{"additional_args":[{"ik_mode":"smart"}]}]')
+["研究", "起源", "生命"]	["café", "alpha"]	["研究", "起源", "生命"]
+PREPARE tp FROM 'SELECT TOKENIZE(?, ?, ?)';
+SET @text = '研究生命起源 alpha ALPHA', @parser = 'ik', @options = '[]';
+EXECUTE tp USING @text, @parser, @options;
+TOKENIZE(?, ?, ?)
+["研究", "起源", "alpha", "生命"]
+SET @options = '[{"additional_args":[{"ik_mode":"smart"}]}]';
+EXECUTE tp USING @text, @parser, @options;
+TOKENIZE(?, ?, ?)
+["研究", "起源", "alpha", "生命"]
+SET @options = '[{"output":"invalid"}]';
+EXECUTE tp USING @text, @parser, @options;
+ERROR HY000: Incorrect arguments to output mode should be string default or all
+SET @options = '[]';
+EXECUTE tp USING @text, @parser, @options;
+TOKENIZE(?, ?, ?)
+["研究", "起源", "alpha", "生命"]
+SET @parser = 'beng', @options = '[{"output":"all"}]';
+EXECUTE tp USING @text, @parser, @options;
+TOKENIZE(?, ?, ?)
+{"tokens": [{"alpha": 2}, {"研究生命起源": 1}], "doc_len": 3}
+DEALLOCATE PREPARE tp;
 SELECT TOKENIZE('中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，', 'ik', '[{"output":"all"}]');
 TOKENIZE('中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123
 {"tokens": [{"中文": 80}, {"abc123": 80}, {"全文索引": 80}, {"全": 80}, {"引": 80}, {"索": 80}, {"文": 160}, {"中": 80}], "doc_len": 720}
