@@ -125,3 +125,44 @@ and also returned 0/50, with mean improvement -0.104091. The first online
 metric set scores 100/100 (mean +0.785393) with the checked-in, unmodified
 public scoring function and baseline. The actual online scoring baseline is
 therefore unresolved. No benchmark, timing, baseline or scoring file was changed.
+
+## Shared immutable dictionary and duplicate-token update
+
+IK now borrows three immutable built-in dictionaries from the process parser
+hub. A cold dictionary is loaded or built under a dedicated initialization lock,
+and only fully initialized objects are published with release/acquire semantics.
+The hub retains each KV-cache handle together with its range wrappers, releasing
+wrappers before handles at parser-service shutdown. Hot parser initialization
+only loads three pointers. The existing dictionary builder and cache miss path
+remain in use, and failed initialization is not published. This applies to the
+three built-in UTF-8 dictionaries, which have no runtime update path.
+
+Duplicate-token aggregation uses the existing hash-map set_or_update callback
+to update both key spelling and count under the bucket write lock. Replacing
+the key with its collation-equivalent latest spelling preserves the existing
+TOKENIZE output. Distinct insertion retains the original initial count. This
+avoids repeated hashing and replacement-node allocation on duplicate tokens.
+Identical string bytes also bypass collation lookup for binary and UTF-8
+binary/general-ci metadata; byte differences still use the original comparator.
+
+All eleven regression cases passed. A cold instance additionally ran 96
+concurrent/reconnect tokenizer calls across 16 clients; every output matched
+the unmodified parent byte for byte. Shared DAT readers only read dictionary
+state; each parser retains its own token-hit state.
+
+| Metric | Parent | Shared dictionary / map update |
+| --- | ---: | ---: |
+| build_ik_all_sec | 8.8590 | 8.8610 |
+| build_ik_content_sec | 6.9060 | 7.0120 |
+| build_beng_en_sec | 3.8790 | 3.5700 |
+| tokenize_ik_avg_ms | 0.1482 | 0.1366 |
+| tokenize_beng_avg_ms | 0.0934 | 0.0879 |
+| query_cn_avg_ms | 2.0994 | 1.8898 |
+| query_beng_avg_ms | 2.9721 | 2.7526 |
+| query_mixed_avg_ms | 2.2003 | 2.1220 |
+| query_limit_avg_ms | 2.6934 | 2.4401 |
+
+This fresh-instance pair again shows machine-load variance. All four hit counts
+remain correct. Online second-pass submission 930e576 returned 0/50 and mean
+improvement -0.091495. Its raw metrics remain inconsistent with the public
+baseline; no official score is inferred from the local runs.

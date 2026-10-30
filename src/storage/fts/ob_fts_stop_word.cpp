@@ -198,21 +198,24 @@ int ObAddWord::check_stopword(const ObFTWord &ft_word, bool &is_stopword)
 int ObAddWord::groupby_word(const ObFTWord &word, const int64_t word_freq)
 {
   int ret = OB_SUCCESS;
-  int64_t word_count = 0;
   if (OB_UNLIKELY(word.empty() || word_freq <= 0)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (!flag_.groupby_word()) {
     if (OB_FAIL(word_map_.set_refactored(word, 1/*word count*/))) {
     }
-  } else if (OB_HASH_EXIST ==
-             (ret = word_map_.set_refactored(word, 1 /*first occurrence*/))) {
-    // Insert distinct document tokens with one hash lookup.
-    // On duplicates retain overwrite semantics, including the last surface
-    // spelling of tokens that compare equal under a non-binary collation.
-    if (OB_FAIL(word_map_.get_refactored(word, word_count))) {
-    } else if (OB_FAIL(word_map_.set_refactored(word, word_count + word_freq,
-                                                1 /*overwrite*/))) {
-    }
+  } else {
+    struct WordFrequencyUpdate {
+      const ObFTWord &word_;
+      int64_t frequency_;
+      void operator()(hash::HashMapPair<ObFTWord, int64_t> &entry) {
+        // Equal keys have the same collation hash. Preserve the last surface
+        // spelling, as the former replacement-node operation did.
+        entry.first = word_;
+        entry.second += frequency_;
+      }
+    } update{word, word_freq};
+    // The callback updates the whole entry under the bucket write lock.
+    ret = word_map_.set_or_update(word, 1 /*first occurrence*/, update);
   }
   return ret;
 }

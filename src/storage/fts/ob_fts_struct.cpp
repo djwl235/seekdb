@@ -40,6 +40,20 @@ int ObFTWord::hash(uint64_t &hash_val) const
 }
 bool ObFTWord::operator==(const ObFTWord &other) const
 {
+  // Identical string bytes under the same metadata are equal in these
+  // collations. Non-identical spellings still require collation comparison
+  // (for example cafe/café); byte inequality is not sufficient.
+  const ObCollationType cs = meta_.get_collation_type();
+  if ((meta_.get_type() == ObVarcharType || meta_.get_type() == ObCharType) &&
+      meta_.get_type() == other.meta_.get_type() &&
+      cs == other.meta_.get_collation_type() &&
+      (cs == CS_TYPE_BINARY || cs == CS_TYPE_UTF8MB4_BIN ||
+       cs == CS_TYPE_UTF8MB4_GENERAL_CI) &&
+      !word_.is_null() && !other.word_.is_null() && word_.len_ > 0 &&
+      word_.len_ == other.word_.len_ &&
+      MEMCMP(word_.ptr_, other.word_.ptr_, word_.len_) == 0) {
+    return true;
+  }
   bool is_equal = false;
   int ret = OB_SUCCESS;
   int cmp_ret = 0;

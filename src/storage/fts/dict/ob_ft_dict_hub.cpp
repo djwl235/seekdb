@@ -28,6 +28,75 @@ namespace oceanbase
 {
 namespace storage
 {
+class CachedFTDict final {
+public:
+  explicit CachedFTDict(const ObFTDictDesc &desc)
+      : alloc_(lib::ObMemAttr("IKBuiltinDict")), ranges_(alloc_),
+        dict_(alloc_, &ranges_, desc) {}
+
+  int init(ObFTDictHub &hub, const ObFTDictDesc &desc) {
+    int ret = hub.load_cache(desc, ranges_);
+    if (OB_ENTRY_NOT_EXIST == ret) {
+      ret = hub.build_cache(desc, ranges_);
+    }
+    if (OB_SUCC(ret)) {
+      ret = dict_.init();
+    }
+    return ret;
+  }
+
+  ObIFTDict *get_dict() { return &dict_; }
+
+private:
+  // Destruction order releases wrappers before their pinned DAT blocks.
+  ObArenaAllocator alloc_;
+  ObFTCacheRangeContainer ranges_;
+  ObFTRangeDict dict_;
+};
+
+ObFTDictHub::ObFTDictHub()
+    : is_inited_(false), dict_map_(), rw_dict_lock_(),
+      builtin_alloc_(lib::ObMemAttr("IKBuiltinHub")), builtin_lock_() {
+  for (int64_t i = 0; i < BUILTIN_DICT_COUNT; ++i) {
+    builtin_dicts_[i].store(nullptr, std::memory_order_relaxed);
+  }
+}
+
+ObFTDictHub::~ObFTDictHub() { destroy(); }
+
+int ObFTDictHub::get_builtin_dict(const ObFTDictDesc &desc, ObIFTDict *&dict) {
+  int ret = OB_SUCCESS;
+  dict = nullptr;
+  const int64_t idx = static_cast<int64_t>(desc.type_) - 1;
+  if (!is_inited_) {
+    ret = OB_NOT_INIT;
+  } else if (idx < 0 || idx >= BUILTIN_DICT_COUNT ||
+             desc.charset_ != CHARSET_UTF8MB4 ||
+             desc.coll_type_ != CS_TYPE_UTF8MB4_BIN) {
+    ret = OB_NOT_SUPPORTED;
+  } else {
+    CachedFTDict *cached = builtin_dicts_[idx].load(std::memory_order_acquire);
+    if (nullptr == cached) {
+      ObSpinLockGuard guard(builtin_lock_);
+      cached = builtin_dicts_[idx].load(std::memory_order_relaxed);
+      if (nullptr == cached) {
+        if (OB_ISNULL(cached = OB_NEWx(CachedFTDict, &builtin_alloc_, desc))) {
+          ret = OB_ALLOCATE_MEMORY_FAILED;
+        } else if (OB_FAIL(cached->init(*this, desc))) {
+          OB_DELETEx(CachedFTDict, &builtin_alloc_, cached);
+          cached = nullptr;
+        } else {
+          builtin_dicts_[idx].store(cached, std::memory_order_release);
+        }
+      }
+    }
+    if (OB_SUCC(ret)) {
+      dict = cached->get_dict();
+    }
+  }
+  return ret;
+}
+
 int ObFTDictHub::init()
 {
   static constexpr int K_MAX_DICT_BUCKET = 128; // for now, only built-in dicts.
@@ -43,6 +112,15 @@ int ObFTDictHub::init()
 int ObFTDictHub::destroy()
 {
   int ret = OB_SUCCESS;
+  // As with the existing parser hub, shutdown occurs after its users quiesce.
+  for (int64_t i = 0; i < BUILTIN_DICT_COUNT; ++i) {
+    CachedFTDict *cached =
+        builtin_dicts_[i].exchange(nullptr, std::memory_order_relaxed);
+    if (nullptr != cached) {
+      OB_DELETEx(CachedFTDict, &builtin_alloc_, cached);
+    }
+  }
+  builtin_alloc_.reset();
   is_inited_ = false;
   return ret;
 }

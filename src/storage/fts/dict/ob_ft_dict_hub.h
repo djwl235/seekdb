@@ -17,9 +17,12 @@
 #ifndef _OCEANBASE_STORAGE_FTS_DICT_OB_FT_DICT_HUB_H_
 #define _OCEANBASE_STORAGE_FTS_DICT_OB_FT_DICT_HUB_H_
 
+#include "lib/allocator/page_arena.h"
 #include "lib/charset/ob_charset.h"
 #include "lib/lock/ob_bucket_lock.h"
+#include "lib/lock/ob_spin_lock.h"
 #include "storage/fts/dict/ob_ft_dict_def.h"
+#include <atomic>
 
 namespace oceanbase
 {
@@ -93,11 +96,13 @@ private:
 };
 
 class ObFTCacheRangeContainer;
+class ObIFTDict;
+class CachedFTDict;
 class ObFTDictHub
 {
 public:
-  ObFTDictHub() : is_inited_(false), dict_map_(), rw_dict_lock_() {}
-  ~ObFTDictHub() {}
+  ObFTDictHub();
+  ~ObFTDictHub();
 
   int init();
 
@@ -106,6 +111,10 @@ public:
   int build_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container);
 
   int load_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container);
+
+  // Only the immutable built-in IK dictionaries are shared. The hub owns the
+  // range wrappers and the KV-cache handles until parser shutdown.
+  int get_builtin_dict(const ObFTDictDesc &desc, ObIFTDict *&dict);
 
 private:
   int get_dict_info(const ObFTDictInfoKey &key, ObFTDictInfo &info);
@@ -118,6 +127,10 @@ private:
   // holds info of dict
   hash::ObHashMap<ObFTDictInfoKey, ObFTDictInfo> dict_map_;
   ObBucketLock rw_dict_lock_;
+  static constexpr int64_t BUILTIN_DICT_COUNT = 3;
+  ObArenaAllocator builtin_alloc_;
+  ObSpinLock builtin_lock_;
+  std::atomic<CachedFTDict *> builtin_dicts_[BUILTIN_DICT_COUNT];
 };
 
 } //  namespace storage
