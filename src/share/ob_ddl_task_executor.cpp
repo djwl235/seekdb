@@ -350,7 +350,17 @@ int ObDDLLocalBuilder::push_task(ObAsyncTask &task)
 
 int64_t ObDDLLocalBuilder::get_thread_cnt_() const
 {
-  return lib::is_mini_mode() ? 1 : 16;
+  // Independent auxiliary indexes are already safe to build concurrently in
+  // normal mode. A single mini-mode worker unnecessarily serializes all their
+  // SQL, even when several minimum-size memory budgets are available. Keep
+  // one worker per minimum budget, capped at two; sub-GiB instances stay
+  // serial.
+  const auto &mode = lib::ObRunningModeConfig::instance();
+  return !mode.mini_mode_
+             ? 16
+             : std::max<int64_t>(1,
+                                 std::min<int64_t>(2, mode.memory_budget_ /
+                                                          mode.MINI_MEM_LOWER));
 }
 
 }  // end namespace share

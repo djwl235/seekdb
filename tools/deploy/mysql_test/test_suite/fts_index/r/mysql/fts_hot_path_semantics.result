@@ -196,4 +196,33 @@ FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF	0.993976
 SELECT COUNT(*) FROM binary_keys WHERE MATCH(body) AGAINST('+alpha -gamma' IN BOOLEAN MODE);
 COUNT(*)
 1
+CREATE TABLE build_a (id INT PRIMARY KEY, body TEXT, n INT);
+INSERT INTO build_a SELECT id, body, id FROM docs;
+CREATE TABLE build_b LIKE build_a;
+INSERT INTO build_b SELECT * FROM build_a;
+CREATE TABLE build_c LIKE build_a;
+INSERT INTO build_c SELECT * FROM build_a;
+CREATE FULLTEXT INDEX ft ON build_a(body) WITH PARSER ik;
+CREATE FULLTEXT INDEX ft ON build_b(body) WITH PARSER beng;
+CREATE INDEX ix_n ON build_c(n);
+SELECT id FROM build_a WHERE MATCH(body) AGAINST('alpha beta') ORDER BY id;
+id
+1
+2
+3
+SELECT id, ROUND(MATCH(body) AGAINST('alpha beta'), 8) AS score FROM build_b
+WHERE MATCH(body) AGAINST('alpha beta') ORDER BY id;
+id	score
+1	1.00632736
+2	0.82365010
+3	1.64730021
+SELECT id FROM build_c FORCE INDEX(ix_n) WHERE n BETWEEN 2 AND 4 ORDER BY id;
+id
+2
+3
+4
+UPDATE build_a SET body = 'alpha beta' WHERE id = 4;
+SELECT COUNT(*) FROM build_a WHERE MATCH(body) AGAINST('alpha beta');
+COUNT(*)
+4
 DROP DATABASE fts_hot_path_semantics;

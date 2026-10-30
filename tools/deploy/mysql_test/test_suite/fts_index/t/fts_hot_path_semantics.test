@@ -108,4 +108,30 @@ SELECT HEX(id), ROUND(MATCH(body) AGAINST('alpha beta gamma'), 6) AS score
  FROM binary_keys WHERE MATCH(body) AGAINST('alpha beta gamma')
  ORDER BY MATCH(body) AGAINST('alpha beta gamma') DESC, id LIMIT 4;
 SELECT COUNT(*) FROM binary_keys WHERE MATCH(body) AGAINST('+alpha -gamma' IN BOOLEAN MODE);
+# Independent auxiliary builds can finish out of queue order, including normal indexes.
+CREATE TABLE build_a (id INT PRIMARY KEY, body TEXT, n INT);
+INSERT INTO build_a SELECT id, body, id FROM docs;
+CREATE TABLE build_b LIKE build_a;
+INSERT INTO build_b SELECT * FROM build_a;
+CREATE TABLE build_c LIKE build_a;
+INSERT INTO build_c SELECT * FROM build_a;
+connect (build_a_conn, $OBMYSQL_MS0, root,,fts_hot_path_semantics,$OBMYSQL_PORT);
+send CREATE FULLTEXT INDEX ft ON build_a(body) WITH PARSER ik;
+connect (build_b_conn, $OBMYSQL_MS0, root,,fts_hot_path_semantics,$OBMYSQL_PORT);
+send CREATE FULLTEXT INDEX ft ON build_b(body) WITH PARSER beng;
+connection default;
+CREATE INDEX ix_n ON build_c(n);
+connection build_a_conn;
+reap;
+connection build_b_conn;
+reap;
+connection default;
+SELECT id FROM build_a WHERE MATCH(body) AGAINST('alpha beta') ORDER BY id;
+SELECT id, ROUND(MATCH(body) AGAINST('alpha beta'), 8) AS score FROM build_b
+ WHERE MATCH(body) AGAINST('alpha beta') ORDER BY id;
+SELECT id FROM build_c FORCE INDEX(ix_n) WHERE n BETWEEN 2 AND 4 ORDER BY id;
+UPDATE build_a SET body = 'alpha beta' WHERE id = 4;
+SELECT COUNT(*) FROM build_a WHERE MATCH(body) AGAINST('alpha beta');
+disconnect build_a_conn;
+disconnect build_b_conn;
 DROP DATABASE fts_hot_path_semantics;

@@ -155,3 +155,50 @@ all the same benchmark defaults, measured IK TOKENIZE at 0.0767 -> 0.0731 ms
 counts. Only tokenization/configuration changed in this follow-up; differences
 in construction and retrieval timings are not attributed to a new query change.
 These local measurements are not a new online score.
+
+
+## Bounded auxiliary-index build concurrency
+
+Phase timing identified the two large, independent auxiliary-index INSERT SELECT
+jobs as the dominant construction cost. Mini mode previously had one local-build
+worker, so both synchronous inner SQL jobs ran sequentially. The same queue
+already supports 16 concurrent workers outside mini mode; its tasks and completion
+notifications support out-of-order completion.
+
+Mini mode now uses one worker per existing minimum-size (1 GiB) memory budget,
+clamped to [1, 2]. Budgets below 2 GiB keep one worker; normal mode keeps 16.
+Memory quotas, per-job SQL parallelism, snapshots, dependency checks and completion
+handling are unchanged. The mapping-table dependency still completes before the
+parent submits its independent auxiliary tables. This also permits independent
+ordinary index jobs to overlap; the scope is the local DDL build queue, not only
+FTS tokenization.
+
+The release build and eleven regression cases passed after temporary phase
+instrumentation was removed. The oracle case additionally overlaps two FTS
+creates and one ordinary-index create, then checks exact membership, scores,
+normal-index contents and subsequent DML. The same case passes at 1 GiB,
+exercising the serial fallback. Its expected output was recorded with the
+unmodified parent binary.
+
+A fresh adjacent, uninstrumented comparison against the saved 80a277c-equivalent
+binary, both with the same 2 GiB budget and all official benchmark defaults,
+measured:
+
+| Metric | One worker | Bounded two workers | Time reduction |
+| --- | ---: | ---: | ---: |
+| build_ik_all_sec | 4.785 | 3.196 | 33.21% |
+| build_ik_content_sec | 3.557 | 2.141 | 39.81% |
+| build_beng_en_sec | 1.937 | 1.229 | 36.55% |
+| build_total_sec | 10.296 | 6.583 | 36.06% |
+
+All four hit counts matched. Tokenization and retrieval remained within the
+nearby timing range. The wrapper's Darwin maximum-child-RSS readings were
+390,250,496 and 422,690,816 bytes respectively; these include the server and
+short-lived client children, not a whole-system memory measurement.
+
+The preceding tokenizer-only submission 80a277c actually received **4.050/50**
+online, despite IK tokenization improving from 0.0747 to 0.0712 ms. The highest
+verified score remains 793011f's **15.078/50**. Under the public positive-weight
+formula, the two nine-metric sets and reported improvements cannot both use the
+same fixed baseline. The actual online scoring inputs remain unresolved; this
+construction change still requires its own online evaluation.
