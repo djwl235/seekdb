@@ -1021,6 +1021,10 @@ void ObServer::destroy()
     disk_usage_report_task_.destroy();
     FLOG_INFO("disk usage report task destroyed");
 
+    // The parser hub pins immutable dictionaries. Release its handles while
+    // the global cache and its hazard-pointer domain are still alive.
+    deinit_fts();
+
     FLOG_INFO("begin to destroy store cache");
     OB_STORE_CACHE.destroy();
     FLOG_INFO("store cache destroyed");
@@ -1099,8 +1103,6 @@ void ObServer::destroy()
     FLOG_INFO("begin to destroy clock generator");
     ObClockGenerator::destroy();
     FLOG_INFO("clock generator destroyed");
-
-    deinit_fts();
 
     FLOG_INFO("begin to destroy io device");
     ObIODeviceWrapper::get_instance().destroy();
