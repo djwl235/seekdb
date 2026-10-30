@@ -202,3 +202,32 @@ verified score remains 793011f's **15.078/50**. Under the public positive-weight
 formula, the two nine-metric sets and reported improvements cannot both use the
 same fixed baseline. The actual online scoring inputs remain unresolved; this
 construction change still requires its own online evaluation.
+
+
+## Short posting-list unions
+
+Online 85d1048 completed successfully at **21.849/50** (mean 0.2184891284).
+Its total construction time fell from the previous submission's 16.451 s to
+8.672 s, with unchanged hit counts. This is the current verified online score.
+
+The execution-only membership path now returns a positive posting contribution
+directly, avoiding temporary relevance-datum writes and copies. For one to eight
+natural-language posting lists, with no filter, limit or functional lookup, the
+text iterator directly selects the minimum of the current document-ID heads and
+advances every tied list together. This bypasses the generic heap protocol while
+retaining its ordered union, duplicate handling, minimum-match collector, batch
+buffer ownership, counters and result projection. Scored queries, Boolean mode,
+limits, larger term sets and other sparse-retrieval implementations retain their
+original merge paths. Reuse reloads every head before comparing it.
+
+The release build and eleven regression cases passed. A 1024-row oracle fixture
+adds interleaved/tied postings across scan batches, one/two/three/four/eight/nine
+terms, repeated and absent terms, prepared-statement transitions across the fast
+path boundary, and transactional deletion/rollback. Expected output comes from
+the unmodified parent binary.
+
+A fresh adjacent comparison against the saved 85d1048-equivalent binary measured
+query_cn 0.8299 -> 0.6734 ms, query_beng 1.2039 -> 0.9941 ms and query_mixed
+0.9263 -> 0.7714 ms (16.7-18.9% reductions). LIMIT used the original path and
+measured 1.2086 -> 1.2301 ms. All hit counts matched. The official benchmark and
+scoring inputs are unchanged; these local readings are not an online score.

@@ -210,9 +210,7 @@ int ObTextRetrievalTokenIter::get_next_row()
     if (OB_UNLIKELY(OB_ITER_END != ret)) {
     }
   } else {
-    if (boolean_filter_only_) {
-      fill_boolean_relevance(1);
-    } else if (need_calc_relevance()) {
+    if (!boolean_filter_only_ && need_calc_relevance()) {
       clear_row_wise_evaluated_flag();
       if (OB_FAIL(fill_token_doc_cnt())) {
       } else if (OB_FAIL(fill_token_weight())) {
@@ -240,19 +238,6 @@ int ObTextRetrievalTokenIter::batch_eval_relevance_expr(const int64_t count)
   return ret;
 }
 
-void ObTextRetrievalTokenIter::fill_boolean_relevance(const int64_t count)
-{
-  // BM25 clamps IDF to a positive epsilon and average document length to a
-  // positive default. A posting with positive term frequency is therefore a
-  // true natural-language predicate. Its numeric score is unobservable here.
-  ObEvalCtx::BatchInfoScopeGuard guard(*eval_ctx_);
-  for (int64_t i = 0; i < count; ++i) {
-    guard.set_batch_idx(i);
-    relevance_expr_->locate_datum_for_write(*eval_ctx_).set_double(1.0);
-    relevance_expr_->set_evaluated_flag(*eval_ctx_);
-  }
-}
-
 int ObTextRetrievalTokenIter::get_next_batch(const int64_t capacity, int64_t &count)
 {
   int ret = OB_SUCCESS;
@@ -269,9 +254,7 @@ int ObTextRetrievalTokenIter::get_next_batch(const int64_t capacity, int64_t &co
   }
 
   if (OB_FAIL(ret)) {
-  } else if (boolean_filter_only_) {
-    fill_boolean_relevance(count);
-  } else if (need_calc_relevance()) {
+  } else if (!boolean_filter_only_ && need_calc_relevance()) {
     const sql::ObBitVector *skip = NULL;
     PRINT_VECTORIZED_ROWS(SQL, DEBUG, *eval_ctx_, *inv_idx_scan_param_->output_exprs_, count, skip);
     clear_batch_wise_evaluated_flag(count);
@@ -506,7 +489,7 @@ int ObTextRetrievalDaaTTokenIter::get_next_row() {
     need_load = true;
   }
   if (OB_SUCC(ret) && need_load) {
-    if (OB_NOT_NULL(relevance_expr_)) {
+    if (OB_NOT_NULL(relevance_expr_) && !token_iter_->boolean_filter_only()) {
       if (OB_FAIL(save_relevances_and_docids())) {
       }
     } else if (OB_FAIL(save_docids())) {
@@ -603,6 +586,11 @@ int ObTextRetrievalDaaTTokenIter::get_curr_score(double &score) const
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(cur_idx_ >= count_)) {
     ret = OB_ARRAY_OUT_OF_RANGE;
+  } else if (token_iter_->boolean_filter_only()) {
+    // Posting membership is sufficient on this execution-only path. Return
+    // its positive contribution directly, without writing and copying a
+    // temporary relevance datum for every posting in every scan batch.
+    score = 1.0;
   } else if (relevance_expr_) {
     score = relevance_[cur_idx_];
   }

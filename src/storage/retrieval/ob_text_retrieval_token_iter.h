@@ -81,6 +81,7 @@ public:
   virtual int update_scan_param(const ObString &token, common::ObArenaAllocator &allocator);
 public:
   sql::ObBitVector *get_skip() { return skip_; }
+  bool boolean_filter_only() const { return boolean_filter_only_; }
   int get_token_doc_cnt(int64_t &token_doc_cnt) const;
   double get_max_token_relevance() const { return max_token_relevance_; }
 private:
@@ -91,7 +92,6 @@ private:
   int fill_token_weight();
   int eval_relevance_expr();
   int batch_eval_relevance_expr(const int64_t count);
-  void fill_boolean_relevance(const int64_t count);
   int estimate_token_doc_cnt();
   inline bool need_inv_idx_agg() { return inv_idx_agg_iter_ != nullptr; }
   inline bool need_calc_relevance() { return inv_idx_agg_iter_ != nullptr; }

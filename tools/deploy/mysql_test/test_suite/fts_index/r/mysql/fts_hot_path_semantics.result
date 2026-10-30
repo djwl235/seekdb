@@ -225,4 +225,68 @@ UPDATE build_a SET body = 'alpha beta' WHERE id = 4;
 SELECT COUNT(*) FROM build_a WHERE MATCH(body) AGAINST('alpha beta');
 COUNT(*)
 4
+CREATE TABLE merge_docs (id INT PRIMARY KEY, body TEXT);
+INSERT INTO merge_docs VALUES
+(1, 'alpha gamma epsilon eta iota'), (2, 'beta delta zeta theta'),
+(3, 'alpha beta gamma'), (4, 'gamma delta epsilon');
+INSERT INTO merge_docs SELECT id + 4, body FROM merge_docs;
+INSERT INTO merge_docs SELECT id + 8, body FROM merge_docs;
+INSERT INTO merge_docs SELECT id + 16, body FROM merge_docs;
+INSERT INTO merge_docs SELECT id + 32, body FROM merge_docs;
+INSERT INTO merge_docs SELECT id + 64, body FROM merge_docs;
+INSERT INTO merge_docs SELECT id + 128, body FROM merge_docs;
+INSERT INTO merge_docs SELECT id + 256, body FROM merge_docs;
+INSERT INTO merge_docs SELECT id + 512, body FROM merge_docs;
+CREATE FULLTEXT INDEX ft ON merge_docs(body) WITH PARSER beng;
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha');
+COUNT(*)	SUM(id)	MIN(id)	MAX(id)
+512	262144	1	1023
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha beta');
+COUNT(*)	SUM(id)	MIN(id)	MAX(id)
+768	393216	1	1023
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha beta gamma');
+COUNT(*)	SUM(id)	MIN(id)	MAX(id)
+1024	524800	1	1024
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha beta gamma delta');
+COUNT(*)	SUM(id)	MIN(id)	MAX(id)
+1024	524800	1	1024
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha beta gamma delta epsilon zeta eta theta');
+COUNT(*)	SUM(id)	MIN(id)	MAX(id)
+1024	524800	1	1024
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha beta gamma delta epsilon zeta eta theta iota');
+COUNT(*)	SUM(id)	MIN(id)	MAX(id)
+1024	524800	1	1024
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha alpha gamma');
+COUNT(*)	SUM(id)	MIN(id)	MAX(id)
+768	393728	1	1024
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM merge_docs WHERE MATCH(body) AGAINST('notpresent');
+COUNT(*)	SUM(id)	MIN(id)	MAX(id)
+0	NULL	NULL	NULL
+PREPARE merge_p FROM 'SELECT COUNT(*) FROM merge_docs WHERE MATCH(body) AGAINST(?)';
+SET @merge_term = 'alpha beta gamma delta epsilon zeta eta theta iota';
+EXECUTE merge_p USING @merge_term;
+COUNT(*)
+1024
+SET @merge_term = 'alpha beta';
+EXECUTE merge_p USING @merge_term;
+COUNT(*)
+768
+SET @merge_term = 'alpha beta gamma delta epsilon zeta eta theta';
+EXECUTE merge_p USING @merge_term;
+COUNT(*)
+1024
+SET @merge_term = 'notpresent';
+EXECUTE merge_p USING @merge_term;
+COUNT(*)
+0
+DEALLOCATE PREPARE merge_p;
+START TRANSACTION;
+DELETE FROM merge_docs WHERE id % 7 = 0;
+SELECT COUNT(*), SUM(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha beta gamma delta');
+COUNT(*)	SUM(id)
+878	449683
+ROLLBACK;
+SELECT COUNT(*), SUM(id) FROM merge_docs WHERE MATCH(body) AGAINST('alpha beta gamma delta');
+COUNT(*)	SUM(id)
+1024	524800
 DROP DATABASE fts_hot_path_semantics;

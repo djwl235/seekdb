@@ -77,6 +77,93 @@ int ObTextDaaTIter::pre_process()
   return ret;
 }
 
+int ObTextDaaTIter::get_next_rows(const int64_t capacity, int64_t &count) {
+  // A short natural-language membership query only needs the ordered union
+  // of its posting lists. Merge their current heads directly, avoiding the
+  // generic heap's push/pop/rebuild protocol for every emitted document.
+  // Keep the collector to preserve minimum-match accounting.
+  if (!is_inited_ || nullptr == iter_param_ || nullptr == dim_iters_ ||
+      !iter_param_->boolean_filter_only_ || iter_param_->need_filter() ||
+      iter_param_->limit_param_->is_valid() || function_lookup_mode_ ||
+      mode_flag_ != sql::ObMatchAgainstMode::NATURAL_LANGUAGE_MODE ||
+      dim_iters_->count() == 0 || dim_iters_->count() > 8) {
+    return ObSRDaaTIterImpl::get_next_rows(capacity, count);
+  }
+  int ret = OB_SUCCESS;
+  count = 0;
+  if (capacity <= 0) {
+    return ret;
+  } else if (OB_FAIL(pre_process())) {
+    return ret;
+  }
+  const int64_t dimensions = dim_iters_->count();
+  const int64_t real_capacity = MIN(capacity, iter_param_->max_batch_size_);
+  while (OB_SUCC(ret) && count < real_capacity) {
+    for (int64_t i = 0; OB_SUCC(ret) && i < next_round_cnt_; ++i) {
+      const int64_t idx = next_round_iter_idxes_[i];
+      auto *iter =
+          static_cast<ObTextRetrievalDaaTTokenIter *>(dim_iters_->at(idx));
+      if (OB_ISNULL(iter)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else if (OB_FAIL(iter->get_next_row())) {
+        if (OB_ITER_END == ret) {
+          iter_domain_ids_[idx] = nullptr;
+          ret = OB_SUCCESS;
+        }
+      } else if (OB_FAIL(iter->get_curr_id(iter_domain_ids_[idx]))) {
+      }
+    }
+    next_round_cnt_ = 0;
+    int64_t min_idx = -1;
+    for (int64_t i = 0; OB_SUCC(ret) && i < dimensions; ++i) {
+      if (nullptr == iter_domain_ids_[i]) {
+        continue;
+      }
+      int64_t comparison = -1;
+      ObSRMergeItem candidate;
+      ObSRMergeItem minimum;
+      candidate.iter_idx_ = i;
+      minimum.iter_idx_ = min_idx;
+      if (min_idx >= 0 &&
+          OB_FAIL(merge_cmp_.cmp(candidate, minimum, comparison))) {
+      } else if (comparison < 0) {
+        min_idx = i;
+        next_round_cnt_ = 0;
+        next_round_iter_idxes_[next_round_cnt_++] = i;
+      } else if (comparison == 0) {
+        next_round_iter_idxes_[next_round_cnt_++] = i;
+      }
+    }
+    if (OB_FAIL(ret)) {
+    } else if (min_idx < 0) {
+      ret = OB_ITER_END;
+    } else {
+      for (int64_t i = 0; OB_SUCC(ret) && i < next_round_cnt_; ++i) {
+        const int64_t idx = next_round_iter_idxes_[i];
+        const double contribution =
+            nullptr == iter_param_->dim_weights_
+                ? 1.0
+                : iter_param_->field_boost_ *
+                      iter_param_->dim_weights_->at(idx);
+        if (OB_FAIL(relevance_collector_->collect_one_dim(idx, contribution))) {
+        }
+      }
+      double relevance = 0.0;
+      bool valid = false;
+      if (OB_FAIL(ret)) {
+      } else if (OB_FAIL(relevance_collector_->get_result(relevance, valid))) {
+      } else if (valid && OB_FAIL(cache_result(
+                              count, *iter_domain_ids_[min_idx], relevance))) {
+      }
+    }
+  }
+  if (OB_SUCC(ret) || OB_ITER_END == ret) {
+    if (count > 0 && OB_FAIL(project_results(count))) {
+    }
+  }
+  return ret;
+}
+
 ObTextBMWIter::ObTextBMWIter()
   : ObSRBMWIterImpl(),
     bm25_param_estimator_() {}
