@@ -1,0 +1,60 @@
+# Preserve tokenizer output, frequencies and scored/unscored retrieval semantics.
+--disable_warnings
+DROP DATABASE IF EXISTS fts_hot_path_semantics;
+CREATE DATABASE fts_hot_path_semantics;
+--enable_warnings
+USE fts_hot_path_semantics;
+SET NAMES utf8mb4;
+SET ob_query_timeout = 10000000000;
+
+# ASCII normalization, stopwords, repeated tokens and token-buffer lifetime.
+SELECT TOKENIZE('lowercase lowerCASE lowerCASE THE the alpha beta alpha', 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('cafe café cafe CAFÉ', 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('alpha,beta;gamma!delta?echo-foxtrot_golf @hotel 123 42.5', 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('ÉCOLE école Café café 你好 world 😀 WORLD', 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('café CAFÉ the THE database' COLLATE utf8mb4_bin, 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('', 'beng');
+SELECT TOKENIZE('! @ # ...', 'beng');
+
+# IK character categories and dictionary range boundaries, in both modes.
+SELECT TOKENIZE('ＡＢＣ１２３ abc123 3.14 一百二十三公斤 日本語 カタカナ 한글 😀 数据库', 'ik', '[{"output":"all"}]');
+SELECT TOKENIZE('一一对应 中文分词 数据库 海洋 龍 龙 龟 龠 龢 龥 龦', 'ik', '[{"output":"all"}]');
+SELECT TOKENIZE('研究生命起源 南京市长江大桥 一百二十三公斤', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]');
+SELECT TOKENIZE('研究生命起源 南京市长江大桥 一百二十三公斤', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]');
+SELECT TOKENIZE('中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，中文 abc123 全文索引，', 'ik', '[{"output":"all"}]');
+
+CREATE TABLE docs (id INT PRIMARY KEY, body TEXT, FULLTEXT INDEX ft(body) WITH PARSER beng);
+INSERT INTO docs VALUES
+ (1, 'alpha alpha database'), (2, 'beta database database'),
+ (3, 'alpha beta database'), (4, 'gamma'), (5, ''), (6, NULL);
+# Set membership is sufficient for these aggregates.
+SELECT COUNT(*), SUM(id), MIN(id), MAX(id) FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha alpha beta');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('notpresent');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('the about');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta') AND id > 1;
+# Numeric score uses and Boolean mode must retain scoring and their filters.
+SELECT COUNT(*), ROUND(SUM(MATCH(body) AGAINST('alpha beta')), 6) > 0 AS scored FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta') > 0.1;
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta') < 100;
+SELECT id, MATCH(body) AGAINST('alpha beta') > 0 AS scored FROM docs WHERE MATCH(body) AGAINST('alpha beta') ORDER BY MATCH(body) AGAINST('alpha beta') DESC, id;
+SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha beta') ORDER BY MATCH(body) AGAINST('alpha beta') DESC, id LIMIT 2;
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('+alpha -beta' IN BOOLEAN MODE);
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('alpha beta' IN BOOLEAN MODE);
+PREPARE p FROM 'SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST(?)';
+SET @term = 'alpha';
+EXECUTE p USING @term;
+SET @term = 'beta';
+EXECUTE p USING @term;
+DEALLOCATE PREPARE p;
+# Posting-list membership must follow transactional updates and rollback.
+START TRANSACTION;
+UPDATE docs SET body = 'alpha beta' WHERE id = 4;
+DELETE FROM docs WHERE id = 1;
+SELECT COUNT(*), SUM(id) FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+ROLLBACK;
+SELECT COUNT(*), SUM(id) FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+CREATE FULLTEXT INDEX ft_ik ON docs(body) WITH PARSER ik;
+SELECT COUNT(*), SUM(id) FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+DROP DATABASE fts_hot_path_semantics;

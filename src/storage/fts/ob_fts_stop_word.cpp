@@ -204,14 +204,14 @@ int ObAddWord::groupby_word(const ObFTWord &word, const int64_t word_freq)
   } else if (!flag_.groupby_word()) {
     if (OB_FAIL(word_map_.set_refactored(word, 1/*word count*/))) {
     }
-  } else if (OB_FAIL(word_map_.get_refactored(word, word_count)) && OB_HASH_NOT_EXIST != ret) {
-  } else {
-    if (OB_HASH_NOT_EXIST == ret) {
-      word_count = 1;
-    } else {
-      word_count += word_freq;
-    }
-    if (OB_FAIL(word_map_.set_refactored(word, word_count, 1/*overwrite*/))) {
+  } else if (OB_HASH_EXIST ==
+             (ret = word_map_.set_refactored(word, 1 /*first occurrence*/))) {
+    // Insert distinct document tokens with one hash lookup.
+    // On duplicates retain overwrite semantics, including the last surface
+    // spelling of tokens that compare equal under a non-binary collation.
+    if (OB_FAIL(word_map_.get_refactored(word, word_count))) {
+    } else if (OB_FAIL(word_map_.set_refactored(word, word_count + word_freq,
+                                                1 /*overwrite*/))) {
     }
   }
   return ret;
