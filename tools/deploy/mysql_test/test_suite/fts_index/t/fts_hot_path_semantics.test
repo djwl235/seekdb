@@ -57,4 +57,19 @@ ROLLBACK;
 SELECT COUNT(*), SUM(id) FROM docs WHERE MATCH(body) AGAINST('alpha beta');
 CREATE FULLTEXT INDEX ft_ik ON docs(body) WITH PARSER ik;
 SELECT COUNT(*), SUM(id) FROM docs WHERE MATCH(body) AGAINST('alpha beta');
+CREATE TABLE binary_keys (id BINARY(16) PRIMARY KEY, body TEXT,
+                         FULLTEXT INDEX ft(body) WITH PARSER beng);
+INSERT INTO binary_keys VALUES
+ (UNHEX('00000000000000000000000000000000'), 'alpha beta'),
+ (UNHEX('00000000000000000000000000000001'), 'beta gamma'),
+ (UNHEX('00000000000000010000000000000000'), 'alpha gamma'),
+ (UNHEX('7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'), 'alpha beta gamma'),
+ (UNHEX('80000000000000000000000000000000'), 'delta'),
+ (UNHEX('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'), 'alpha beta gamma delta');
+# Multi-list merge order, ties and index-back with binary keys containing NUL.
+SELECT HEX(id) FROM binary_keys WHERE MATCH(body) AGAINST('alpha beta gamma') ORDER BY id;
+SELECT HEX(id), ROUND(MATCH(body) AGAINST('alpha beta gamma'), 6) AS score
+ FROM binary_keys WHERE MATCH(body) AGAINST('alpha beta gamma')
+ ORDER BY MATCH(body) AGAINST('alpha beta gamma') DESC, id LIMIT 4;
+SELECT COUNT(*) FROM binary_keys WHERE MATCH(body) AGAINST('+alpha -gamma' IN BOOLEAN MODE);
 DROP DATABASE fts_hot_path_semantics;

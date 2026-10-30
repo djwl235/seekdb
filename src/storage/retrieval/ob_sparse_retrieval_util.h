@@ -28,13 +28,18 @@ namespace storage
 class ObDomainIdCmp
 {
 public:
-  ObDomainIdCmp() : cmp_func_(nullptr) {}
+  ObDomainIdCmp() : cmp_func_(nullptr), binary_doc_id_(false) {}
   ~ObDomainIdCmp() {}
   inline int init(const ObObjMeta &obj_meta);
   inline int compare(const ObDatum &lhs, const ObDatum &rhs, int &cmp_ret) const;
-  inline void reset() { cmp_func_ = nullptr; }
+  inline void reset() {
+    cmp_func_ = nullptr;
+    binary_doc_id_ = false;
+  }
+
 private:
   common::ObDatumCmpFuncType cmp_func_;
+  bool binary_doc_id_;
   DISALLOW_COPY_AND_ASSIGN(ObDomainIdCmp);
 };
 
@@ -52,6 +57,9 @@ int ObDomainIdCmp::init(const ObObjMeta &obj_meta)
       STORAGE_LOG(WARN,"failed to get basic functions", K(ret), K(obj_meta));
     } else {
       cmp_func_ = id_basic_funcs->null_first_cmp_;
+      binary_doc_id_ = (obj_meta.get_type() == ObVarcharType ||
+                        obj_meta.get_type() == ObCharType) &&
+                       obj_meta.get_collation_type() == CS_TYPE_BINARY;
     }
   }
   return ret;
@@ -78,6 +86,13 @@ int ObDomainIdCmp::compare(const ObDatum &lhs, const ObDatum &rhs, int &cmp_ret)
     } else {
       ret = OB_ERR_UNEXPECTED;
     }
+  } else if (binary_doc_id_ && !lhs.is_null() && !rhs.is_null() &&
+             lhs.len_ == OB_DOC_ID_COLUMN_BYTE_LENGTH &&
+             rhs.len_ == OB_DOC_ID_COLUMN_BYTE_LENGTH) {
+    // Binary collation compares equal-length strings bytewise. Retain the
+    // generic comparator for nulls, sentinels, other types and lengths.
+    const int result = MEMCMP(lhs.ptr_, rhs.ptr_, OB_DOC_ID_COLUMN_BYTE_LENGTH);
+    cmp_ret = (result > 0) - (result < 0);
   } else {
     ret = cmp_func_(lhs, rhs, cmp_ret, nullptr);
   }

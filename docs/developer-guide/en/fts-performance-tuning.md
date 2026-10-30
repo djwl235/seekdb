@@ -30,6 +30,22 @@ posting-list format, token rules, stopword filtering, or relevance calculation.
 
 No query-planning or relevance-calculation changes are included.
 
+A second pass replaces the per-segment IK arbitration hash table with a small
+array and a forward cursor. Conflict groups are appended in strictly increasing
+offset order; optimization chooses a subset of each group, so it preserves this
+ordering. Exact-offset matching and skipped characters are unchanged.
+
+For retrieval merge and BMW document-id comparisons, the 16-byte, non-null
+CHAR/VARCHAR case under binary collation uses a fixed-size byte comparison.
+Other lengths, collations, data types, nulls and sentinel values retain their
+original comparator. The result is normalized to -1/0/1. The binary collation
+implementation itself uses memcmp and length comparison; equal fixed lengths
+therefore have identical ordering.
+
+These two directions were also discussed in the public design notes of
+[upstream PR #2235](https://github.com/oceanbase/seekdb/pull/2235). This change
+implements them locally and retains the existing scoring and execution pipeline.
+
 ## Correctness verification
 
 `fts_index/fts_hot_path_semantics.test` covers token frequencies, repeated words,
@@ -81,3 +97,31 @@ case. The partitioned-query case has an existing EXPLAIN placeholder-number
 difference (`:0` versus `:1`); its complete output is byte-identical between
 the parent and optimized binaries. The large basic-DML case also reaches an
 existing missing legacy mapping-table metadata assertion on both binaries.
+
+## Second-pass validation and evaluation discrepancy
+
+The second pass again passed all eleven regression cases. The oracle case adds
+binary keys containing NUL and high bytes, multi-term merging, score ordering,
+ties and Boolean exclusion. Expected results were recorded with the parent
+binary. The full benchmark was repeated with fresh instances in the same session
+(candidate followed by parent). Earlier timings were about twice as slow even
+for unchanged operations, so they must not be used to attribute second-pass gains.
+
+| Metric | Parent (same session) | Current | Time reduction |
+| --- | ---: | ---: | ---: |
+| build_ik_all_sec | 4.8890 | 4.6730 | 4.42% |
+| build_ik_content_sec | 3.8850 | 3.5520 | 8.57% |
+| build_beng_en_sec | 2.0430 | 1.9430 | 4.89% |
+| tokenize_ik_avg_ms | 0.0843 | 0.0751 | 10.91% |
+| tokenize_beng_avg_ms | 0.0524 | 0.0444 | 15.27% |
+| query_cn_avg_ms | 1.2433 | 0.9840 | 20.86% |
+| query_beng_avg_ms | 1.5594 | 1.4101 | 9.57% |
+| query_mixed_avg_ms | 1.1976 | 1.0850 | 9.40% |
+| query_limit_avg_ms | 1.3730 | 1.2443 | 9.37% |
+
+Online submission 12af99f returned success but 0/50, with mean improvement
+-0.413077. The unmodified official base 5bce9e0 was independently submitted
+and also returned 0/50, with mean improvement -0.104091. The first online
+metric set scores 100/100 (mean +0.785393) with the checked-in, unmodified
+public scoring function and baseline. The actual online scoring baseline is
+therefore unresolved. No benchmark, timing, baseline or scoring file was changed.

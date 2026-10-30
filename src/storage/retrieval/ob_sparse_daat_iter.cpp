@@ -24,11 +24,8 @@ namespace storage
 {
 
 ObSRMergeCmp::ObSRMergeCmp()
-  : cmp_func_(nullptr),
-    iter_ids_(nullptr),
-    is_inited_(false)
-{
-}
+    : cmp_func_(nullptr), binary_doc_id_(false), iter_ids_(nullptr),
+      is_inited_(false) {}
 
 int ObSRMergeCmp::init(
     sql::ObDatumMeta id_meta,
@@ -44,6 +41,9 @@ int ObSRMergeCmp::init(
     if (OB_ISNULL(cmp_func_)) {
       ret = OB_ERR_UNEXPECTED;
     } else {
+      binary_doc_id_ =
+          (id_meta.type_ == ObVarcharType || id_meta.type_ == ObCharType) &&
+          id_meta.cs_type_ == CS_TYPE_BINARY;
       is_inited_ = true;
     }
   }
@@ -60,8 +60,15 @@ int ObSRMergeCmp::cmp(
     ret = OB_NOT_INIT;
   } else {
     int tmp_ret = 0;
-    if (OB_FAIL(cmp_func_(
-            get_id_datum(l.iter_idx_), get_id_datum(r.iter_idx_), tmp_ret, nullptr))) {
+    const ObDatum &lhs = get_id_datum(l.iter_idx_);
+    const ObDatum &rhs = get_id_datum(r.iter_idx_);
+    if (binary_doc_id_ && !lhs.is_null() && !rhs.is_null() && !lhs.is_ext() &&
+        !rhs.is_ext() && lhs.len_ == OB_DOC_ID_COLUMN_BYTE_LENGTH &&
+        rhs.len_ == OB_DOC_ID_COLUMN_BYTE_LENGTH) {
+      const int result =
+          MEMCMP(lhs.ptr_, rhs.ptr_, OB_DOC_ID_COLUMN_BYTE_LENGTH);
+      cmp_ret = (result > 0) - (result < 0);
+    } else if (OB_FAIL(cmp_func_(lhs, rhs, tmp_ret, nullptr))) {
     } else {
       cmp_ret = tmp_ret;
     }
