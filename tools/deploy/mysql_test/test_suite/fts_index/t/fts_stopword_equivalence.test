@@ -1,0 +1,12 @@
+# Stopword membership must preserve case, collation and parser behavior.
+SET NAMES utf8mb4;
+SELECT TOKENIZE('a about an are as at be by com de en for from how i in is it la of on or that the this to was what when where who will with und www', 'beng', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]');
+SELECT TOKENIZE('A ABOUT An ARE As AT Be BY COM De EN FOR FROM HOW I IN IS IT LA OF ON OR THAT THE THIS TO WAS WHAT WHEN WHERE WHO WILL WITH UND WWW', 'beng', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]');
+SELECT TOKENIZE('aa abou abouts ar bee ccom forb fromm hows inn isla its lab off onn ore thats thee thiz too wass whata whens wheres whom wills withs under wwwx database performance', 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA', 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA' COLLATE utf8mb4_bin, 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA' COLLATE utf8mb4_unicode_ci, 'beng', '[{"output":"all"}]');
+SELECT TOKENIZE('a about the THE tHe aa ABOUTS database performance thé ｔｈｅ', 'space', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]');
+SELECT TOKENIZE(CONVERT(UNHEX('74686500205448450974686520746865C2A020746865CC812061626F7574') USING utf8mb4), 'space', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]');
+SELECT TOKENIZE('the THE about FROM database 研究生命起源 全文索引', 'ik', '[{"output":"all"}]');
+SELECT TOKENIZE('the THE about FROM database 研究生命起源 全文索引', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]');

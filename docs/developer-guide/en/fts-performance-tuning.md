@@ -351,3 +351,34 @@ and 30 warmups. Build total was 8.630 s, IK/BENG TOKENIZE 0.0747/0.0461 ms,
 and four queries 0.7026/1.1124/0.8735/1.4542 ms with exact expected counts.
 SQL-loop baseline was around 0.050 ms and timing variance remained material;
 this run is retained as validation, without inferring an online score.
+
+
+## Invocation-local word maps
+
+The five word-map creation sites in TOKENIZE, document-row generation, the two
+retrieval implementations and optimizer token selectivity estimation are stack
+variables used synchronously. They now use the shared ObFTWordMap alias with
+NoPthreadDefendMode for both buckets and its invocation-owned node allocator.
+No map or allocator is shared by workers. Hashing, collation equality, bucket
+counts, node insertion order and iteration order are retained. The process-wide
+stopword set retains its existing synchronization. Raw template declarations in
+both query implementations and the optimizer are updated to the same alias.
+
+A complete native rebuild passed. Twelve established-suite regressions passed,
+including a new stopword/case/accent/NUL/collation/IK-mode fixture whose expected
+output was recorded with the original binary. All 204 Unicode differential cases
+and 120 cold/concurrent/reconnect calls matched the original. The original build
+does not support latin1, so no Latin1 coverage is claimed.
+
+An adjacent supplemental TOKENIZE inner loop measured IK 0.019369 -> 0.018007 ms
+(7.0%) and BENG 0.006421 -> 0.004843 ms (24.6%). The complete unchanged official
+benchmark measured IK 0.0681 -> 0.0656 ms and BENG 0.0469 -> 0.0436 ms. Build
+sums were 5.658 -> 5.776 s, without a measured construction gain; query timings
+were 0.6696/0.9965/0.7556/1.2941 -> 0.6360/0.9401/0.7152/1.2729 ms.
+All hit counts matched, but timing noise prevents assigning the small query
+variation to this tokenizer change. These are local results, not online points.
+
+The tenth online submission 8be514c completed with **36.685/50**, the current
+highest verified score. Its complete online metrics are retained separately:
+7.494 s total construction, 0.0603/0.0382 ms IK/BENG TOKENIZE and
+0.7834/1.1880/0.9257/1.7312 ms for CN/BENG/mixed/LIMIT, with correct hit counts.

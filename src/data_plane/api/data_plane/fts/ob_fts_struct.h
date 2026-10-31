@@ -51,7 +51,17 @@ private:
   ObObjMeta meta_;
 };
 
-typedef common::hash::ObHashMap<ObFTWord, int64_t> ObFTWordMap;
+// These maps belong to synchronous TOKENIZE, document-row generation, query
+// tokenization or selectivity-estimation calls. They and their node allocators
+// are local to the invocation and are not shared by workers.
+using FTWordMapNode = common::hash::HashMapTypes<ObFTWord, int64_t>::AllocType;
+using FTWordMapAllocator = common::hash::SimpleAllocer<
+    FTWordMapNode, common::hash::NodeNumTraits<FTWordMapNode>::NODE_NUM,
+    common::hash::NoPthreadDefendMode>;
+typedef common::hash::ObHashMap<
+    ObFTWord, int64_t, common::hash::NoPthreadDefendMode,
+    common::hash::hash_func<ObFTWord>, common::hash::equal_to<ObFTWord>,
+    FTWordMapAllocator> ObFTWordMap;
 
 class ObAddWordFlag final
 {

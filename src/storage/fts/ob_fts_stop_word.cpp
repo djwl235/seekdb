@@ -214,7 +214,7 @@ int ObAddWord::groupby_word(const ObFTWord &word, const int64_t word_freq)
         entry.second += frequency_;
       }
     } update{word, word_freq};
-    // The callback updates the whole entry under the bucket write lock.
+    // Update the existing entry without replacing its node.
     ret = word_map_.set_or_update(word, 1 /*first occurrence*/, update);
   }
   return ret;

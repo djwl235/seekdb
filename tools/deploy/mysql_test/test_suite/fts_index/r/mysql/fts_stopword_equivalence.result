@@ -1,0 +1,31 @@
+SET NAMES utf8mb4;
+SELECT TOKENIZE('a about an are as at be by com de en for from how i in is it la of on or that the this to was what when where who will with und www', 'beng', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]');
+TOKENIZE('a about an are as at be by com de en for from how i in is it la of on or that the this to was what when where who will with und www', 'beng', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]')
+{"tokens": [], "doc_len": 0}
+SELECT TOKENIZE('A ABOUT An ARE As AT Be BY COM De EN FOR FROM HOW I IN IS IT LA OF ON OR THAT THE THIS TO WAS WHAT WHEN WHERE WHO WILL WITH UND WWW', 'beng', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]');
+TOKENIZE('A ABOUT An ARE As AT Be BY COM De EN FOR FROM HOW I IN IS IT LA OF ON OR THAT THE THIS TO WAS WHAT WHEN WHERE WHO WILL WITH UND WWW', 'beng', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]')
+{"tokens": [], "doc_len": 0}
+SELECT TOKENIZE('aa abou abouts ar bee ccom forb fromm hows inn isla its lab off onn ore thats thee thiz too wass whata whens wheres whom wills withs under wwwx database performance', 'beng', '[{"output":"all"}]');
+TOKENIZE('aa abou abouts ar bee ccom forb fromm hows inn isla its lab off onn ore thats thee thiz too wass whata whens wheres whom wills withs under wwwx database performance', 'beng', '[{"output":"all"}]')
+{"tokens": [{"whens": 1}, {"database": 1}, {"whom": 1}, {"thats": 1}, {"performance": 1}, {"thiz": 1}, {"wass": 1}, {"isla": 1}, {"thee": 1}, {"abou": 1}, {"ccom": 1}, {"off": 1}, {"wills": 1}, {"wheres": 1}, {"inn": 1}, {"onn": 1}, {"its": 1}, {"too": 1}, {"forb": 1}, {"whata": 1}, {"ore": 1}, {"hows": 1}, {"abouts": 1}, {"withs": 1}, {"fromm": 1}, {"wwwx": 1}, {"lab": 1}, {"bee": 1}, {"under": 1}], "doc_len": 29}
+SELECT TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA', 'beng', '[{"output":"all"}]');
+TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA', 'beng', '[{"output":"all"}]')
+{"tokens": [{"café": 4}, {"alpha": 2}], "doc_len": 6}
+SELECT TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA' COLLATE utf8mb4_bin, 'beng', '[{"output":"all"}]');
+TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA' COLLATE utf8mb4_bin, 'beng', '[{"output":"all"}]')
+{"tokens": [{"alpha": 2}, {"café": 2}, {"cafe": 2}], "doc_len": 6}
+SELECT TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA' COLLATE utf8mb4_unicode_ci, 'beng', '[{"output":"all"}]');
+TOKENIZE('the thé THE THÉ cafe café Cafe CAFÉ alpha ALPHA' COLLATE utf8mb4_unicode_ci, 'beng', '[{"output":"all"}]')
+{"tokens": [{"café": 4}, {"alpha": 2}], "doc_len": 6}
+SELECT TOKENIZE('a about the THE tHe aa ABOUTS database performance thé ｔｈｅ', 'space', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]');
+TOKENIZE('a about the THE tHe aa ABOUTS database performance thé ｔｈｅ', 'space', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]')
+{"tokens": [{"ｔｈｅ": 1}, {"database": 1}, {"performance": 1}, {"abouts": 1}, {"aa": 1}], "doc_len": 5}
+SELECT TOKENIZE(CONVERT(UNHEX('74686500205448450974686520746865C2A020746865CC812061626F7574') USING utf8mb4), 'space', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]');
+TOKENIZE(CONVERT(UNHEX('74686500205448450974686520746865C2A020746865CC812061626F7574') USING utf8mb4), 'space', '[{"output":"all"},{"additional_args":[{"min_token_size":1}]}]')
+{"tokens": [{"thé": 1}], "doc_len": 1}
+SELECT TOKENIZE('the THE about FROM database 研究生命起源 全文索引', 'ik', '[{"output":"all"}]');
+TOKENIZE('the THE about FROM database 研究生命起源 全文索引', 'ik', '[{"output":"all"}]')
+{"tokens": [{"研究": 1}, {"起源": 1}, {"database": 1}, {"全文索引": 1}, {"about": 1}, {"生命": 1}, {"from": 1}, {"the": 2}], "doc_len": 9}
+SELECT TOKENIZE('the THE about FROM database 研究生命起源 全文索引', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]');
+TOKENIZE('the THE about FROM database 研究生命起源 全文索引', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]')
+{"tokens": [{"研究": 1}, {"起源": 1}, {"database": 1}, {"全文索引": 1}, {"about": 1}, {"生命": 1}, {"from": 1}, {"the": 2}], "doc_len": 9}
