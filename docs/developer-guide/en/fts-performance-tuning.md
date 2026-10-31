@@ -378,8 +378,7 @@ were 0.6696/0.9965/0.7556/1.2941 -> 0.6360/0.9401/0.7152/1.2729 ms.
 All hit counts matched, but timing noise prevents assigning the small query
 variation to this tokenizer change. These are local results, not online points.
 
-The tenth online submission 8be514c completed with **36.685/50**, the current
-highest verified score. Its complete online metrics are retained separately:
+The tenth online submission 8be514c completed with **36.685/50**, the highest verified score at that submission. Its complete online metrics are retained separately:
 7.494 s total construction, 0.0603/0.0382 ms IK/BENG TOKENIZE and
 0.7834/1.1880/0.9257/1.7312 ms for CN/BENG/mixed/LIMIT, with correct hit counts.
 
@@ -408,3 +407,51 @@ BENG TOKENIZE was 0.0440 -> 0.0428 ms. Build totals were 6.255 -> 6.357 s.
 Query samples, especially mixed and LIMIT, were noisy (candidate standard
 deviations 0.5118 and 0.4052 ms); no retrieval improvement is inferred from
 these runs. Official benchmark scripts, SQL, scoring and baselines are unchanged.
+
+
+## Cardinality-only limited derived scans
+
+The eleventh online submission c268468 completed with **38.786/50**. Its
+unmodified report records 8.298 s construction, IK/BENG TOKENIZE 0.0598/0.0371 ms,
+and queries 0.8589/1.3167/0.9998/1.8382 ms with correct hit counts.
+
+A direct COUNT(*) over a single ordinary derived table does not observe that
+table's projected values. For a plain natural-language MATCH with LIMIT/OFFSET,
+no other filters and column/literal projections, preprocessing replaces those
+unused projections with a constant and omits the implicit relevance ordering.
+The proof excludes value-reading parents (including COUNT(expr), SUM and outer
+filters), shared CTEs/views, explicit ordering, grouping, windows, DISTINCT,
+WITH TIES, percent limits, subqueries, assignments and locking/output side
+effects. LIMIT/OFFSET execution is retained. Code generation allows the existing
+membership-only execution mode for an unordered all-constant limited projection;
+scored or value-producing queries retain their original execution paths.
+
+The plan becomes a covering posting scan (access(nil), is_index_back=false),
+without a relevance sort. All existing child definitions/expressions remain
+available. Nothing caches query results, documents or token output.
+
+The native build passed. The new limited-count regression was recorded with the
+original binary, then matched by the candidate. It covers zero/short/oversized
+limits, offsets including cross-batch cases, no hits, empty terms, NULL, parents
+that observe values, explicit ordering, Boolean mode, dynamic prepared limits
+and transaction rollback. Twelve of thirteen selected regressions matched their
+checked-in expected results. The remaining drop_index test compares metadata
+rows without ORDER BY; its complete actual output matches the saved previous
+binary byte for byte, and its old expected ordering was left unchanged.
+
+Adjacent complete official default runs measured LIMIT 2.3002 -> 0.2511 ms,
+with expected hits 8001/11000/7332/20. Other query times were
+1.2107/1.7613/1.3796 -> 1.1863/1.7298/1.3333 ms. Build and tokenizer timing
+fluctuated and no gains there are attributed to this query-only change.
+A supplemental fixed-work run (500 warmups and 3 x 3000 per query group)
+measured LIMIT about 2.4840 -> 0.1579 ms and total child CPU 65.860 -> 47.242 s.
+That CPU includes server, SQL clients, startup, warmup and shutdown. These local
+measurements do not predict an online score. Official benchmark scripts, SQL,
+timers, scoring and baseline files remain unchanged.
+
+The suggested public reference repository Apical-7280/seekdb-2026-competition
+was inspected read-only. At inspection master ce31fae differed from its official
+parent 3bdb363 only by README verification text, and its 2026-competition ref
+still pointed at 5bce9e0. No competition optimization commit was identified and
+no source was copied or cherry-picked from that repository. This change was
+derived from the local execution plans and independent cardinality analysis.

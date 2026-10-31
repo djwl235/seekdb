@@ -1,0 +1,114 @@
+DROP DATABASE IF EXISTS fts_limited_count;
+CREATE DATABASE fts_limited_count;
+USE fts_limited_count;
+SET NAMES utf8mb4;
+SET ob_query_timeout = 10000000000;
+CREATE TABLE docs (id INT PRIMARY KEY, body TEXT,
+FULLTEXT INDEX ft(body) WITH PARSER beng);
+INSERT INTO docs VALUES
+(1, 'alpha gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma'),
+(2, 'alpha alpha alpha gamma gamma gamma gamma gamma gamma gamma'),
+(3, 'alpha alpha alpha alpha alpha alpha alpha alpha alpha alpha'),
+(4, 'beta beta beta beta beta beta beta beta'),
+(5, 'beta gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma gamma'),
+(6, 'gamma'), (7, NULL), (8, '');
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 0) t;
+COUNT(*)
+0
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 1) t;
+COUNT(*)
+1
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 2) t;
+COUNT(*)
+2
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 20) t;
+COUNT(*)
+3
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 20 OFFSET 2) t;
+COUNT(*)
+1
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 20 OFFSET 3) t;
+COUNT(*)
+0
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('notpresent') LIMIT 20) t;
+COUNT(*)
+0
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('') LIMIT 20) t;
+COUNT(*)
+0
+SELECT COUNT(*) FROM (SELECT NULL AS n FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 2) t;
+COUNT(*)
+2
+SELECT COUNT(*), SUM(id) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 2) t;
+COUNT(*)	SUM(id)
+2	5
+SELECT SUM(id) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 2) t;
+SUM(id)
+5
+SELECT COUNT(id) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 2) t;
+COUNT(id)
+2
+SELECT COUNT(n) FROM (SELECT NULL AS n FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 2) t;
+COUNT(n)
+0
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 1) t WHERE id = 3;
+COUNT(*)
+1
+SELECT COUNT(*) FROM (SELECT id, MATCH(body) AGAINST('alpha') AS score
+FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 1) t WHERE id = 3 AND score > 0;
+COUNT(*)
+1
+SELECT GROUP_CONCAT(id ORDER BY id) FROM
+(SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') LIMIT 2) t;
+GROUP_CONCAT(id ORDER BY id)
+2,3
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') ORDER BY id DESC LIMIT 2) t;
+COUNT(*)
+2
+SELECT COUNT(*), SUM(id) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha') ORDER BY id ASC LIMIT 2) t;
+COUNT(*)	SUM(id)
+2	3
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('+alpha -gamma' IN BOOLEAN MODE) LIMIT 2) t;
+COUNT(*)
+1
+PREPARE limited_count FROM 'SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST(?) LIMIT ? OFFSET ?) t';
+SET @term = 'alpha', @n = 2, @off = 1;
+EXECUTE limited_count USING @term, @n, @off;
+COUNT(*)
+2
+SET @term = 'beta', @n = 20, @off = 1;
+EXECUTE limited_count USING @term, @n, @off;
+COUNT(*)
+1
+SET @term = 'notpresent', @n = 2, @off = 0;
+EXECUTE limited_count USING @term, @n, @off;
+COUNT(*)
+0
+SET @term = 'alpha', @n = 0, @off = 0;
+EXECUTE limited_count USING @term, @n, @off;
+COUNT(*)
+0
+DEALLOCATE PREPARE limited_count;
+INSERT INTO docs SELECT id + 8, body FROM docs;
+INSERT INTO docs SELECT id + 16, body FROM docs;
+INSERT INTO docs SELECT id + 32, body FROM docs;
+INSERT INTO docs SELECT id + 64, body FROM docs;
+INSERT INTO docs SELECT id + 128, body FROM docs;
+INSERT INTO docs SELECT id + 256, body FROM docs;
+INSERT INTO docs SELECT id + 512, body FROM docs;
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha beta') LIMIT 257) t;
+COUNT(*)
+257
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha beta') LIMIT 1000 OFFSET 500) t;
+COUNT(*)
+140
+START TRANSACTION;
+DELETE FROM docs WHERE MOD(id, 3) = 0;
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha beta') LIMIT 500) t;
+COUNT(*)
+427
+ROLLBACK;
+SELECT COUNT(*) FROM (SELECT id FROM docs WHERE MATCH(body) AGAINST('alpha beta') LIMIT 1000) t;
+COUNT(*)
+640
+DROP DATABASE fts_limited_count;

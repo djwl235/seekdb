@@ -32,6 +32,78 @@ namespace oceanbase
 using namespace common;
 namespace sql
 {
+namespace
+{
+// COUNT(*) over a plain limited derived table observes its cardinality only.
+// The number of rows after LIMIT/OFFSET does not depend on the implicit MATCH
+// ranking. Keep ordinary result-producing, scored and explicitly ordered
+// queries unchanged, as well as shared CTE/view definitions and WITH TIES.
+bool is_limited_fts_count_input(const ObIArray<ObParentDMLStmt> &parents,
+                                const ObDMLStmt &stmt)
+{
+  if (!stmt.is_select_stmt() || parents.empty()) {
+    return false;
+  }
+  const ObDMLStmt *parent_stmt = parents.at(parents.count() - 1).stmt_;
+  if (nullptr == parent_stmt || !parent_stmt->is_select_stmt()) {
+    return false;
+  }
+  const auto &parent = *static_cast<const ObSelectStmt *>(parent_stmt);
+  const auto &child = static_cast<const ObSelectStmt &>(stmt);
+  if (!parent.is_scala_group_by() || parent.get_aggr_item_size() != 1 ||
+      parent.get_select_item_size() != 1 || parent.get_table_size() != 1 ||
+      parent.get_from_item_size() != 1 || parent.get_from_item(0).is_joined_ ||
+      parent.is_set_stmt() || parent.has_distinct() || parent.has_order_by() ||
+      parent.has_limit() || parent.has_window_function() ||
+      !parent.get_condition_exprs().empty() || !parent.get_having_exprs().empty() ||
+      parent.has_for_update() || parent.has_select_into() ||
+      parent.is_calc_found_rows() || parent.is_contains_assignment()) {
+    return false;
+  }
+  const ObAggFunRawExpr *count = parent.get_aggr_item(0);
+  const TableItem *derived = parent.get_table_item(0);
+  if (nullptr == count || count->get_expr_type() != T_FUN_COUNT ||
+      count->get_real_param_count() != 0 || count->is_param_distinct() ||
+      parent.get_select_item(0).expr_ != count || nullptr == derived ||
+      !derived->is_generated_table() || derived->is_view_table_ ||
+      derived->cte_type_ != TableItem::CTEType::NOT_CTE || derived->ref_query_ != &child ||
+      parent.get_from_item(0).table_id_ != derived->table_id_) {
+    return false;
+  }
+  if (!child.has_limit() || child.is_fetch_with_ties() ||
+      nullptr != child.get_limit_percent_expr() || child.has_order_by() ||
+      child.has_group_by() || child.has_distinct() || child.has_window_function() ||
+      !child.get_having_exprs().empty() || child.has_subquery() ||
+      child.is_set_stmt() || child.has_recursive_cte() ||
+      child.has_for_update() || child.has_select_into() ||
+      child.is_calc_found_rows() || child.is_contains_assignment() ||
+      child.get_table_size() != 1 || child.get_from_item_size() != 1 ||
+      child.get_from_item(0).is_joined_ || nullptr == child.get_table_item(0) ||
+      !child.get_table_item(0)->is_basic_table() ||
+      child.get_match_exprs().count() != 1 ||
+      child.get_condition_exprs().count() != 1) {
+    return false;
+  }
+  const ObMatchFunRawExpr *match = child.get_match_exprs().at(0);
+  const ObRawExpr *predicate = child.get_condition_exprs().at(0);
+  if (nullptr == match || match->is_es_match() ||
+      match->get_mode_flag() != NATURAL_LANGUAGE_MODE ||
+      !match->get_columns_boosts().empty() || nullptr == predicate ||
+      !(predicate == match ||
+        (predicate->get_expr_type() == T_OP_BOOL &&
+         predicate->get_param_count() == 1 && predicate->get_param_expr(0) == match))) {
+    return false;
+  }
+  for (int64_t i = 0; i < child.get_select_item_size(); ++i) {
+    const ObRawExpr *expr = child.get_select_item(i).expr_;
+    if (nullptr == expr || !(expr->is_column_ref_expr() || expr->is_const_expr())) {
+      return false;
+    }
+  }
+  return true;
+}
+}
+
 int ObTransformPreProcess::transform_one_stmt(common::ObIArray<ObParentDMLStmt> &parent_stmts,
                                               ObDMLStmt *&stmt,
                                               bool &trans_happened)
@@ -178,8 +250,21 @@ int ObTransformPreProcess::transform_one_stmt(common::ObIArray<ObParentDMLStmt> 
       }
     }
     if (OB_SUCC(ret)) {
-      if (stmt->get_match_exprs().count() > 0 &&
-          OB_FAIL(preserve_order_for_fulltext_search(stmt, is_happened))) {
+      if (is_limited_fts_count_input(parent_stmts, *stmt)) {
+        // No expression in this parent reads a derived column. Replacing
+        // unused column projections also makes the posting scan covering.
+        ObConstRawExpr *one = nullptr;
+        if (OB_FAIL(ObRawExprUtils::build_const_int_expr(
+                        *ctx_->expr_factory_, ObIntType, 1, one))) {
+        } else {
+          auto *select = static_cast<ObSelectStmt *>(stmt);
+          for (int64_t i = 0; i < select->get_select_item_size(); ++i) {
+            select->get_select_item(i).expr_ = one;
+          }
+          trans_happened = true;
+        }
+      } else if (stmt->get_match_exprs().count() > 0 &&
+                 OB_FAIL(preserve_order_for_fulltext_search(stmt, is_happened))) {
       } else {
         trans_happened |= is_happened;
       }

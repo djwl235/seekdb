@@ -1916,9 +1916,9 @@ int ObTscCgService::generate_text_ir_ctdef(const ObLogTableScan &op,
     }
   }
 
-  // A scalar aggregate observes membership, not the ordering or magnitude of
-  // a sole positive natural-language MATCH filter. Retain all generated
-  // expressions and child definitions; only execution may omit BM25 work.
+  // Scalar aggregates and unordered constant projections can observe only
+  // membership of a sole positive natural-language MATCH filter. Retain all
+  // generated expressions and child definitions; execution may omit BM25 work.
   const ObDMLStmt *stmt = op.get_stmt();
   const ObRawExpr *match_pred = tr_info.pushdown_match_filter_;
   if (OB_SUCC(ret) && stmt != nullptr && stmt->is_select_stmt() && !stmt->has_subquery()
@@ -1930,8 +1930,24 @@ int ObTscCgService::generate_text_ir_ctdef(const ObLogTableScan &op,
       && match_pred != nullptr && T_OP_BOOL == match_pred->get_expr_type()
       && 1 == match_pred->get_param_count() && match_pred->get_param_expr(0) == match_against) {
     const ObSelectStmt *select_stmt = static_cast<const ObSelectStmt *>(stmt);
-    if (select_stmt->is_scala_group_by() && !select_stmt->has_limit()
-        && !select_stmt->has_order_by() && !select_stmt->is_match_topk()) {
+    bool constant_projection = select_stmt->has_limit() &&
+        !select_stmt->has_group_by() && !select_stmt->has_distinct() &&
+        !select_stmt->has_window_function() && select_stmt->get_having_exprs().empty() &&
+        !select_stmt->is_set_stmt() && !select_stmt->is_fetch_with_ties() &&
+        nullptr == select_stmt->get_limit_percent_expr() &&
+        !select_stmt->has_for_update() && !select_stmt->has_select_into() &&
+        !select_stmt->is_calc_found_rows() && !select_stmt->is_contains_assignment() &&
+        select_stmt->get_table_size() == 1 && select_stmt->get_from_item_size() == 1 &&
+        !select_stmt->get_from_item(0).is_joined_ &&
+        select_stmt->get_condition_exprs().count() == 1 &&
+        select_stmt->get_condition_exprs().at(0) == match_pred;
+    for (int64_t i = 0; constant_projection && i < select_stmt->get_select_item_size(); ++i) {
+      const ObRawExpr *expr = select_stmt->get_select_item(i).expr_;
+      constant_projection = nullptr != expr && expr->is_const_expr();
+    }
+    if (((select_stmt->is_scala_group_by() && !select_stmt->has_limit()) ||
+         constant_projection) &&
+        !select_stmt->has_order_by() && !select_stmt->is_match_topk()) {
       ObSEArray<ObRawExpr *, 16> relation_exprs;
       bool only_membership = true;
       bool found_predicate = false;
