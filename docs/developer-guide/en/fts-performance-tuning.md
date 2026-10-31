@@ -455,3 +455,33 @@ parent 3bdb363 only by README verification text, and its 2026-competition ref
 still pointed at 5bce9e0. No competition optimization commit was identified and
 no source was copied or cherry-picked from that repository. This change was
 derived from the local execution plans and independent cardinality analysis.
+
+
+## Inlined posting cursor
+
+Posting advancement now keeps the owned-batch cursor increment in a small
+inline method and refills through a separate private function only at batch
+boundaries. Current-ID lookup is inline too. The original increment order,
+scalar/vector refill logic, buffer ownership, error returns and relevance
+calculation are retained. No document or query results are cached.
+
+The native build passed. Seven relevant regressions passed in both the normal
+256-row configuration and the scalar configuration (_rowsets_max_rows=0).
+The scalar runs also matched the previous saved binary's results. Coverage
+includes cross-batch overlapping postings, empty/no hits, prepared statements,
+exact relevance, Boolean expressions, limited counts, DML and rollback.
+
+Adjacent fixed-work queries measured CN 0.6115 -> 0.5899, BENG 0.8983 -> 0.8632,
+and mixed 0.6917 -> 0.6783 ms. LIMIT stayed near 0.086 ms. Total child CPU was
+22.190 -> 21.456 s (server/clients/startup/warmup/shutdown). A second adjacent
+comparison using the complete unchanged official default benchmark measured
+CN 0.6257 -> 0.6125, BENG 0.9401 -> 0.9199, mixed 0.7339 -> 0.7235 ms and
+LIMIT 0.1472 -> 0.1473 ms. Construction was 5.646 -> 5.643 s; no construction
+or tokenizer improvement is attributed to this cursor change. Hit counts were
+correct in every group. These are local observations, not online points.
+
+The preceding limited-count submission 9ab0101 completed online at 37.995/50,
+while the highest remains c268468's 38.786. Online LIMIT improved from 1.8382
+to 0.1294 ms, other queries were 0.8572/1.2994/0.9993 ms, construction 7.847 s,
+and IK/BENG TOKENIZE 0.0606/0.0376 ms. The report alone does not explain the
+slightly lower overall score; no baseline/scoring changes were made.

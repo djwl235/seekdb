@@ -131,11 +131,26 @@ public:
   int init(const ObTextRetrievalScanIterParam &iter_param);
   void reuse();
   void reset();
-  virtual int get_next_row() override;
+  virtual int get_next_row() override
+  {
+    // Most posting advances stay inside the owned batch. Keep this small
+    // cursor operation visible to the merge loop; refill at the boundary.
+    return OB_LIKELY(++cur_idx_ < count_) ? OB_SUCCESS : refill_postings();
+  }
   virtual int get_next_batch(const int64_t capacity, int64_t &count) override;
   virtual int advance_to(const ObDatum &id_datum) override;
   virtual int get_curr_score(double &score) const override;
-  virtual int get_curr_id(const ObDatum *&id_datum) const override;
+  virtual int get_curr_id(const ObDatum *&id_datum) const override
+  {
+    int ret = OB_SUCCESS;
+    if (OB_UNLIKELY(cur_idx_ >= count_)) {
+      ret = OB_ARRAY_OUT_OF_RANGE;
+    } else {
+      id_datum = compact_ids_ ? &compact_doc_ids_[cur_idx_].datum_
+                             : &doc_id_[cur_idx_].get_datum();
+    }
+    return ret;
+  }
 public:
   int get_token_doc_cnt(int64_t &token_doc_cnt) const { return token_iter_->get_token_doc_cnt(token_doc_cnt); }
   virtual int get_dim_max_score(double &score) override {
@@ -147,6 +162,7 @@ public:
     return ret;
   }
 private:
+  int refill_postings();
   int save_relevances_and_docids();
   int save_docids();
   struct CompactDocId

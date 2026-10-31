@@ -483,11 +483,10 @@ void ObTextRetrievalDaaTTokenIter::reset()
 }
 
 // Sparse Retrieval Dimension Iter Interfaces
-int ObTextRetrievalDaaTTokenIter::get_next_row() {
+int ObTextRetrievalDaaTTokenIter::refill_postings() {
   int ret = OB_SUCCESS;
   bool need_load = false;
-  if (OB_LIKELY((++cur_idx_) < count_)) {
-  } else if (!eval_ctx_->is_vectorized() && (OB_FAIL(token_iter_->get_next_row()))) {
+  if (!eval_ctx_->is_vectorized() && (OB_FAIL(token_iter_->get_next_row()))) {
     if (OB_UNLIKELY(OB_ITER_END != ret)) {
     }
   } else if (!eval_ctx_->is_vectorized() && FALSE_IT(count_ = 1)) {
@@ -638,18 +637,6 @@ int ObTextRetrievalDaaTTokenIter::get_curr_score(double &score) const
     score = 1.0;
   } else if (relevance_expr_) {
     score = relevance_[cur_idx_];
-  }
-  return ret;
-}
-
-int ObTextRetrievalDaaTTokenIter::get_curr_id(const ObDatum *&id_datum) const
-{
-  int ret = OB_SUCCESS;
-  if (OB_UNLIKELY(cur_idx_ >= count_)) {
-    ret = OB_ARRAY_OUT_OF_RANGE;
-  } else {
-    id_datum = compact_ids_ ? &compact_doc_ids_[cur_idx_].datum_
-                           : &doc_id_[cur_idx_].get_datum();
   }
   return ret;
 }
