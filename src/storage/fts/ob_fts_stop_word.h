@@ -85,6 +85,8 @@ private:
   typedef common::hash::ObHashSet<storage::ObFTWord> StopWordSet;
 
   StopWordSet stopword_set_;
+  uint64_t ascii_stopword_keys_[DEFAULT_STOPWORD_BUCKET_NUM]{};
+  int64_t ascii_stopword_count_ = 0;
   ObObjMeta stopword_type_;
 
   bool inited_ = false;

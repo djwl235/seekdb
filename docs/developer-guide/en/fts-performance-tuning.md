@@ -382,3 +382,29 @@ The tenth online submission 8be514c completed with **36.685/50**, the current
 highest verified score. Its complete online metrics are retained separately:
 7.494 s total construction, 0.0603/0.0382 ms IK/BENG TOKENIZE and
 0.7834/1.1880/0.9257/1.7312 ms for CN/BENG/mixed/LIMIT, with correct hit counts.
+
+
+## Immutable ASCII stopword keys
+
+Stopword initialization derives a sorted array of 64-bit ASCII letter keys from
+the same built-in list used by the original set. The array is read-only before
+workers use it. If a future list contains non-letter or longer-than-eight-byte
+entries the shortcut stays disabled. For binary and the three tested UTF-8
+collations, ASCII-letter input uses case-folded keys; long ASCII words cannot
+match a shorter stored key. Accents, fullwidth characters, punctuation, NUL and
+other charsets retain the original conversion and general-ci set lookup. The
+original shared set and its synchronization are retained. No input or token
+result is cached.
+
+The native build, twelve regressions, 204 Unicode cases and 120 concurrent/cold/
+reconnect calls passed against the original binary. An adjacent inner-loop
+control measured IK 0.021079 and BENG 0.005946 ms; the candidate measured
+0.020976 and 0.004813 ms. IK is unaffected by this stopword path; BENG's reduction
+was about 19%. A reverse-order repeat experienced simultaneous control slowdown
+and is retained without attributing its larger difference to this change.
+
+The unchanged default full benchmark also completed with expected hit counts.
+BENG TOKENIZE was 0.0440 -> 0.0428 ms. Build totals were 6.255 -> 6.357 s.
+Query samples, especially mixed and LIMIT, were noisy (candidate standard
+deviations 0.5118 and 0.4052 ms); no retrieval improvement is inferred from
+these runs. Official benchmark scripts, SQL, scoring and baselines are unchanged.

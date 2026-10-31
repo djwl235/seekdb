@@ -17,6 +17,8 @@
 #include "object/ob_object.h"
 #define USING_LOG_PREFIX STORAGE_FTS
 
+#include <algorithm>
+
 #include "share/rc/ob_server_runtime.h"
 #include "storage/fts/ob_fts_stop_word.h"
 #include "storage/fts/ob_fts_parser_helper.h"
@@ -26,6 +28,26 @@ namespace oceanbase
 {
 namespace storage
 {
+
+namespace
+{
+// Only ASCII letters use this representation. Other characters retain the
+// original charset conversion and UTF-8 general-ci comparison.
+bool ascii_letter_key(const ObString &word, uint64_t &key)
+{
+  key = 0;
+  for (int64_t i = 0; i < word.length(); ++i) {
+    const unsigned char c =
+        static_cast<unsigned char>(word.ptr()[i]) | 0x20;
+    if (c < 'a' || c > 'z') {
+      return false;
+    } else if (i < sizeof(key)) {
+      key |= static_cast<uint64_t>(c) << (8 * i);
+    }
+  }
+  return true;
+}
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // class ObStopWordChecker
@@ -50,13 +72,26 @@ int ObStopWordChecker::init()
 
     stopword_type_.set_meta(stop_meta);
     const int64_t stopword_count = sizeof(ob_stop_word_list) / sizeof(ob_stop_word_list[0]);
+    bool ascii_words = true;
     for (int64_t i = 0; OB_SUCC(ret) && i < stopword_count; ++i) {
-      ObFTWord stopword(STRLEN(ob_stop_word_list[i]), ob_stop_word_list[i], stopword_type_);
+      const int64_t length = STRLEN(ob_stop_word_list[i]);
+      const ObString text(length, ob_stop_word_list[i]);
+      if (length > sizeof(uint64_t) ||
+          !ascii_letter_key(text, ascii_stopword_keys_[i])) {
+        ascii_words = false;
+      }
+      ObFTWord stopword(length, ob_stop_word_list[i], stopword_type_);
       if (OB_FAIL(stopword_set_.set_refactored(stopword))) {
       }
     }
 
     if (OB_SUCC(ret)) {
+      // Derive the immutable lookup from the same list as the original set.
+      // A future non-ASCII or long entry disables this shortcut completely.
+      if (ascii_words) {
+        std::sort(ascii_stopword_keys_, ascii_stopword_keys_ + stopword_count);
+        ascii_stopword_count_ = stopword_count;
+      }
       inited_ = true;
     }
   }
@@ -67,6 +102,7 @@ void ObStopWordChecker::destroy()
 {
   if (inited_) {
     stopword_set_.destroy();
+    ascii_stopword_count_ = 0;
     inited_ = false;
   }
 }
@@ -76,12 +112,22 @@ int ObStopWordChecker::check_stopword(const ObFTWord &word, bool &is_stopword)
   int ret = OB_SUCCESS;
   
   
-  common::ObArenaAllocator allocator(lib::ObMemAttr("ChkStopWord"));
+  uint64_t key = 0;
+  const ObCollationType cs = word.get_collation_type();
+  const bool ascii_compatible_charset = cs == CS_TYPE_UTF8MB4_BIN ||
+      cs == CS_TYPE_UTF8MB4_GENERAL_CI || cs == CS_TYPE_UTF8MB4_UNICODE_CI ||
+      cs == CS_TYPE_BINARY;
   if (OB_UNLIKELY(!inited_)) {
     ret = OB_NOT_INIT;
   } else if (OB_UNLIKELY(word.empty())) {
     ret = OB_INVALID_ARGUMENT;
+  } else if (ascii_stopword_count_ > 0 && ascii_compatible_charset &&
+             ascii_letter_key(word.get_word().get_string(), key)) {
+    is_stopword = word.get_word().len_ <= sizeof(key) &&
+        std::binary_search(ascii_stopword_keys_,
+                           ascii_stopword_keys_ + ascii_stopword_count_, key);
   } else {
+    common::ObArenaAllocator allocator(lib::ObMemAttr("ChkStopWord"));
     common::ObString cmp_str;
     // do nothing set out with in if type is the same.
     if (OB_FAIL(common::ObCharset::charset_convert(
