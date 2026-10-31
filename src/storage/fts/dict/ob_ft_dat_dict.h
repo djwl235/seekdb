@@ -67,6 +67,8 @@ public:
 
   int find(const ObFTSingleWord &word, ObFTWordCode &code) const;
 
+  bool fill_character_codes(ObFTWordCode *codes, const int64_t capacity) const;
+
 private:
   struct Header header_;
 } __attribute__((packed));
@@ -167,7 +169,9 @@ template <typename DataType = void>
 class ObFTDATReader
 {
 public:
-  ObFTDATReader(ObFTDAT *dat) : dat_(dat) {}
+  ObFTDATReader(ObFTDAT *dat) : dat_(dat), character_codes_(nullptr) {}
+
+  void init_character_codes(ObIAllocator &allocator);
 
   // Match single word with hit.
   int match_with_hit(const ObString &single_word,
@@ -176,6 +180,9 @@ public:
 
 private:
   ObFTDAT *dat_;
+  static constexpr int64_t CHARACTER_CODE_COUNT = 1 << 16;
+  // Optional immutable lookup owned by the range dictionary allocator.
+  const ObFTWordCode *character_codes_;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(ObFTDATReader);

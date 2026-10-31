@@ -285,3 +285,31 @@ inner loop measured IK at about 0.03725 ms after range decoding's 0.03980 ms;
 BENG remained around 0.0115 ms without an established improvement. The complete
 official benchmark also ran, but its elevated SQL baseline prevents attributing
 absolute timing differences to this change.
+
+
+## Immutable character-code lookup
+
+UTF-8 binary cache readers optionally build a 65,536-entry table of existing DAT
+character codes during cold range construction. Each table uses 256 KiB, owned
+by the pinned range dictionary's allocator. Its entries are populated through
+the original hash lookup, preserving its result even for duplicate cache entries.
+Only validated single-character BMP UTF-8 input uses direct lookup; supplementary
+characters, invalid encodings and multi-character input retain the original hash
+path. Allocation failure retains that path as well. The serialized DAT and
+its original hash map are unchanged. Tables are immutable before publication.
+
+The native build, eleven regression cases, 204-case Unicode differential and
+120 cold/concurrent/reconnect calls passed against the original binary. The
+semantic fixture also passed with a 1 GiB memory budget. An adjacent full official
+benchmark against the saved scalar-property version measured IK TOKENIZE at
+0.0685 -> 0.0661 ms (3.5%); the additional inner-loop diagnostic measured
+0.02156 -> 0.02015 ms (6.6%). BENG remained unchanged. Build totals were
+5.755 -> 5.788 s and query times 0.7130/1.0497/0.8175/1.2673 ->
+0.6949/1.0351/0.8055/1.2829 ms, with matching hit counts. These variations do
+not establish new construction or retrieval improvements. Raw maximum-child RSS
+was 417,628,160 -> 415,170,560 bytes; it includes clients and is too noisy to
+measure this table's memory cost.
+
+The eighth online submission c4609dd executed successfully but received
+**29.712/50**, below the highest verified **33.698/50**. Its complete online
+metrics are being compared before attributing the score change.

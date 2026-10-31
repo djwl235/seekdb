@@ -22,6 +22,7 @@
 #include "lib/alloc/alloc_struct.h"
 #include "lib/allocator/ob_allocator.h"
 #include "lib/allocator/page_arena.h"
+#include "lib/charset/ob_charset_string_helper.h"
 #include "lib/list/ob_list.h"
 #include "lib/oblog/ob_log_module.h"
 #include "lib/utility/ob_macro_utils.h"
@@ -247,6 +248,22 @@ int ObFTDATBuilder<DATA_TYPE>::encode(const ObString &word, ObFTWordCode &code, 
 }
 
 template <typename DATA_TYPE>
+void ObFTDATReader<DATA_TYPE>::init_character_codes(ObIAllocator &allocator)
+{
+  if (nullptr == character_codes_) {
+    auto *codes = static_cast<ObFTWordCode *>(
+        allocator.alloc(CHARACTER_CODE_COUNT * sizeof(ObFTWordCode)));
+    if (nullptr != codes) {
+      if (dat_->get_map()->fill_character_codes(codes, CHARACTER_CODE_COUNT)) {
+        character_codes_ = codes;
+      } else {
+        allocator.free(codes);
+      }
+    }
+  }
+}
+
+template <typename DATA_TYPE>
 int ObFTDATReader<DATA_TYPE>::match_with_hit(const ObString &ft_char,
                                              const ObDATrieHit &last_hit,
                                              ObDATrieHit &hit) const
@@ -258,9 +275,25 @@ int ObFTDATReader<DATA_TYPE>::match_with_hit(const ObString &ft_char,
   int32_t *base = reinterpret_cast<int32_t *>(dat_->buff + dat_->base_offset_);
   int32_t *check = reinterpret_cast<int32_t *>(dat_->buff + dat_->check_offset_);
 
-  ObFTSingleWord word;
-  word.set_word(ft_char.ptr(), ft_char.length());
-  if (OB_FAIL(dat_->get_map()->find(word, code)) && OB_ENTRY_NOT_EXIST != ret) {
+  bool direct_lookup = false;
+  if (nullptr != character_codes_ && nullptr != ft_char.ptr() &&
+      ft_char.length() > 0 && ft_char.length() <= 4) {
+    ob_wc_t unicode = 0;
+    const auto *begin = reinterpret_cast<const unsigned char *>(ft_char.ptr());
+    const int length = common::ob_charset_decode_unicode<CHARSET_UTF8MB4>(
+        begin, begin + ft_char.length(), unicode);
+    if (length == ft_char.length() && unicode < CHARACTER_CODE_COUNT) {
+      code = character_codes_[unicode];
+      ret = code < 0 ? OB_ENTRY_NOT_EXIST : OB_SUCCESS;
+      direct_lookup = true;
+    }
+  }
+  if (!direct_lookup) {
+    ObFTSingleWord word;
+    word.set_word(ft_char.ptr(), ft_char.length());
+    ret = map->find(word, code);
+  }
+  if (OB_FAIL(ret) && OB_ENTRY_NOT_EXIST != ret) {
   } else if (OB_ENTRY_NOT_EXIST == ret) {
     ret = OB_SUCCESS;
     hit.set_unmatch();
@@ -314,6 +347,31 @@ int ObArrayHashMap::find(const ObFTSingleWord &word, ObFTWordCode &code) const
     }
   }
   return ret;
+}
+
+bool ObArrayHashMap::fill_character_codes(ObFTWordCode *codes, const int64_t capacity) const
+{
+  bool valid = true;
+  MEMSET(codes, 0xff, capacity * sizeof(ObFTWordCode));
+  for (uint32_t i = 0; valid && i < header_.capacity_; ++i) {
+    const Entry &entry = header_.data[i];
+    if (entry.used && entry.word.word_len > 0 && entry.word.word_len <= 4) {
+      ob_wc_t unicode = 0;
+      const auto *begin = reinterpret_cast<const unsigned char *>(entry.word.word);
+      const int length = common::ob_charset_decode_unicode<CHARSET_UTF8MB4>(
+          begin, begin + entry.word.word_len, unicode);
+      if (length == entry.word.word_len && unicode < capacity) {
+        // Use the original lookup's result even if a cache block contains
+        // duplicate entries. Valid UTF-8 has one encoding per code point.
+        ObFTWordCode code = -1;
+        valid = OB_SUCCESS == find(entry.word, code) && code >= 0;
+        if (valid) {
+          codes[unicode] = code;
+        }
+      }
+    }
+  }
+  return valid;
 }
 
 int ObArrayHashMap::insert(const ObString &key, ObFTWordCode code)

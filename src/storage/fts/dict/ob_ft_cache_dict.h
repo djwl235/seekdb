@@ -38,6 +38,12 @@ public:
   {
   }
   int init() override;
+  void init_character_codes(ObIAllocator &allocator)
+  {
+    if (CS_TYPE_UTF8MB4_BIN == coll_type_) {
+      reader_.init_character_codes(allocator);
+    }
+  }
   int match(const ObString &single_word, ObDATrieHit &hit) const override;
   int match(const ObString &words, bool &is_match) const override;
   int match_with_hit(const ObString &single_word,
