@@ -313,3 +313,41 @@ measure this table's memory cost.
 The eighth online submission c4609dd executed successfully but received
 **29.712/50**, below the highest verified **33.698/50**. Its complete online
 metrics are being compared before attributing the score change.
+
+
+## Compact membership posting IDs
+
+Membership-only binary CHAR/VARCHAR posting batches use owned 16-byte ID buffers
+with an associated datum (32 bytes per slot), instead of the general 40-byte ID
+buffer plus datum (56 bytes). The unused relevance array is also omitted on this
+path. Every row must be unskipped, non-null, non-extension and exactly 16 bytes;
+otherwise the complete batch uses the original general-purpose cache, allocated
+lazily when needed. Scalar/non-batch input uses that fallback. Each compact copy
+rebinds its datum to its own storage, and reset/reuse clear the selected format.
+Numeric relevance, sorting, LIMIT and other general retrieval paths are retained.
+
+The release build and all eleven regression cases passed, including the existing
+1024-row overlapping posting lists, prepared statements, exact scores, ranked
+queries and transaction rollback. A supplementary fixed-work query diagnostic
+ran control/candidate and candidate/control pairs, each with 500 warmups followed
+by three samples of 3000 queries per kind. All hit counts matched. The first
+pair measured CN/BENG/mixed at 0.7558/1.0518/0.7834 ->
+0.6360/0.9733/0.7192 ms. In the reverse pair the candidate measured
+0.6870/0.9745/0.7253 versus control 0.6946/1.0755/0.8250 ms;
+CN's smaller repeat benefit demonstrates remaining timing noise. Unchanged LIMIT
+remained around 1.3 ms. Child CPU time (server and SQL clients, including startup,
+warmup and shutdown) decreased 37.542 -> 34.666 s and 37.308 -> 35.524 s.
+These diagnostics supplement the unchanged official benchmark; they are not
+online scores or measurements of server CPU alone.
+
+The ninth online submission a731a19 completed with **30.212/50** and correct hit
+counts, leaving **33.698/50** as the highest verified result. Its build total was
+8.499 s, IK/BENG TOKENIZE 0.0641/0.0405 ms, and CN/BENG/mixed/LIMIT queries
+0.8990/1.3679/1.0435/1.8196 ms. No full-score claim is made.
+
+The unchanged complete official benchmark also passed with defaults: 20,000
+documents, batch 500, TOKENIZE 3,000 rounds, queries 200 rounds, three samples
+and 30 warmups. Build total was 8.630 s, IK/BENG TOKENIZE 0.0747/0.0461 ms,
+and four queries 0.7026/1.1124/0.8735/1.4542 ms with exact expected counts.
+SQL-loop baseline was around 0.050 ms and timing variance remained material;
+this run is retained as validation, without inferring an online score.

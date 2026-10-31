@@ -149,6 +149,23 @@ public:
 private:
   int save_relevances_and_docids();
   int save_docids();
+  struct CompactDocId
+  {
+    char bytes_[OB_DOC_ID_COLUMN_BYTE_LENGTH];
+    ObDatum datum_;
+    CompactDocId() : datum_() {}
+    CompactDocId(const CompactDocId &other) { *this = other; }
+    CompactDocId &operator=(const CompactDocId &other)
+    {
+      if (this != &other) {
+        MEMCPY(bytes_, other.bytes_, sizeof(bytes_));
+        datum_ = other.datum_;
+        datum_.ptr_ = bytes_;
+      }
+      return *this;
+    }
+    TO_STRING_KV(K_(datum));
+  };
   ObArenaAllocator *allocator_;
   ObTextRetrievalTokenIter *token_iter_;
   sql::ObEvalCtx *eval_ctx_;
@@ -159,6 +176,8 @@ private:
   int64_t count_;
   ObFixedArray<double, ObIAllocator> relevance_; // when ~ObFixedArray(), wikll destory itself
   ObFixedArray<ObDocIdExt, ObIAllocator> doc_id_;
+  ObFixedArray<CompactDocId, ObIAllocator> compact_doc_ids_;
+  bool compact_ids_;
   common::ObDatumCmpFuncType cmp_func_;
   bool is_inited_;
   DISALLOW_COPY_AND_ASSIGN(ObTextRetrievalDaaTTokenIter);

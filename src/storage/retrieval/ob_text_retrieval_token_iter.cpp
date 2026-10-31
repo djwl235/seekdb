@@ -414,6 +414,8 @@ ObTextRetrievalDaaTTokenIter::ObTextRetrievalDaaTTokenIter()
     count_(0),
     relevance_(),
     doc_id_(),
+    compact_doc_ids_(),
+    compact_ids_(false),
     cmp_func_(nullptr),
     is_inited_(false)
 {
@@ -436,16 +438,23 @@ int ObTextRetrievalDaaTTokenIter::init(const ObTextRetrievalScanIterParam &iter_
       relevance_expr_ = iter_param.relevance_expr_;
       inv_scan_domain_id_col_ = iter_param.inv_scan_domain_id_col_;
       max_batch_size_ = OB_MAX(iter_param.eval_ctx_->max_batch_size_, 1);
+      const ObDatumMeta &id_meta = inv_scan_domain_id_col_->datum_meta_;
+      const bool compact_storage = iter_param.boolean_filter_only_ &&
+          (id_meta.type_ == ObVarcharType || id_meta.type_ == ObCharType) &&
+          id_meta.cs_type_ == CS_TYPE_BINARY;
       common::ObDatumBasicFuncs *basic_funcs = ObDatumFuncs::get_basic_func(inv_scan_domain_id_col_->datum_meta_.type_, CS_TYPE_BINARY);
       cmp_func_ = basic_funcs->null_first_cmp_;
       if (OB_ISNULL(cmp_func_)) {
         ret = OB_ERR_UNEXPECTED;
       } else if (FALSE_IT(relevance_.set_allocator(allocator_))) {
-      } else if (OB_FAIL(relevance_.init(max_batch_size_))) {
-      } else if (OB_FAIL(relevance_.prepare_allocate(max_batch_size_))) {
+      } else if (!iter_param.boolean_filter_only_ && OB_FAIL(relevance_.init(max_batch_size_))) {
+      } else if (!iter_param.boolean_filter_only_ && OB_FAIL(relevance_.prepare_allocate(max_batch_size_))) {
       } else if (FALSE_IT(doc_id_.set_allocator(allocator_))) {
-      } else if (OB_FAIL(doc_id_.init(max_batch_size_))) {
-      } else if (OB_FAIL(doc_id_.prepare_allocate(max_batch_size_))) {
+      } else if (!compact_storage && OB_FAIL(doc_id_.init(max_batch_size_))) {
+      } else if (!compact_storage && OB_FAIL(doc_id_.prepare_allocate(max_batch_size_))) {
+      } else if (FALSE_IT(compact_doc_ids_.set_allocator(allocator_))) {
+      } else if (compact_storage && OB_FAIL(compact_doc_ids_.init(max_batch_size_))) {
+      } else if (compact_storage && OB_FAIL(compact_doc_ids_.prepare_allocate(max_batch_size_))) {
       } else {
         is_inited_ = true;
       }
@@ -456,6 +465,7 @@ int ObTextRetrievalDaaTTokenIter::init(const ObTextRetrievalScanIterParam &iter_
 
 void ObTextRetrievalDaaTTokenIter::reuse()
 {
+  compact_ids_ = false;
   cur_idx_ = -1;
   count_ = 0;
   token_iter_->reuse();
@@ -465,6 +475,8 @@ void ObTextRetrievalDaaTTokenIter::reset()
 {
   relevance_.reset();
   doc_id_.reset();
+  compact_doc_ids_.reset();
+  compact_ids_ = false;
   token_iter_->reset();
   cur_idx_ = -1;
   count_ = 0;
@@ -501,6 +513,7 @@ int ObTextRetrievalDaaTTokenIter::get_next_row() {
 int ObTextRetrievalDaaTTokenIter::save_relevances_and_docids()
 {
   int ret = OB_SUCCESS;
+  compact_ids_ = false;
   if (OB_ISNULL(relevance_expr_) || OB_ISNULL(inv_scan_domain_id_col_)) {
     ret = OB_INVALID_ARGUMENT;
   } else {
@@ -524,10 +537,40 @@ int ObTextRetrievalDaaTTokenIter::save_relevances_and_docids()
 int ObTextRetrievalDaaTTokenIter::save_docids()
 {
   int ret = OB_SUCCESS;
+  compact_ids_ = false;
   if (OB_ISNULL(inv_scan_domain_id_col_)) {
     ret = OB_INVALID_ARGUMENT;
   } else {
     cur_idx_ = 0;
+    if (count_ > 0 && compact_doc_ids_.count() >= count_ &&
+        inv_scan_domain_id_col_->is_batch_result()) {
+      const ObDatum *ids = inv_scan_domain_id_col_->locate_batch_datums(*eval_ctx_);
+      bool all_compact = true;
+      for (int64_t i = 0; all_compact && i < count_; ++i) {
+        const ObDatum &id = ids[i];
+        if (token_iter_->get_skip()->at(i) || id.is_null() || id.is_ext() ||
+            id.len_ != OB_DOC_ID_COLUMN_BYTE_LENGTH) {
+          all_compact = false;
+        } else {
+          CompactDocId &cached = compact_doc_ids_[i];
+          MEMCPY(cached.bytes_, id.ptr_, sizeof(cached.bytes_));
+          cached.datum_.set_string(cached.bytes_, sizeof(cached.bytes_));
+        }
+      }
+      compact_ids_ = all_compact;
+    }
+    if (compact_ids_) {
+      return ret;
+    }
+    // Allocate the original general-purpose buffer only when this batch cannot
+    // use the compact representation (including scalar/non-batch execution).
+    if (count_ > 0 && doc_id_.count() == 0) {
+      if (OB_FAIL(doc_id_.init(max_batch_size_))) {
+        return ret;
+      } else if (OB_FAIL(doc_id_.prepare_allocate(max_batch_size_))) {
+        return ret;
+      }
+    }
     const ObDatumVector &doc_id_datum = inv_scan_domain_id_col_->locate_expr_datumvector(*eval_ctx_);
     for (int64_t i = 0; OB_SUCC(ret) && i < count_; ++i) {
       if (OB_LIKELY(!token_iter_->get_skip()->at(i))) {
@@ -556,7 +599,8 @@ int ObTextRetrievalDaaTTokenIter::advance_to(const ObDatum &id_datum)
   while (OB_SUCC(ret) && !find) {
     if (cur_idx_ < count_) {
       if (OB_FAIL(cmp_func_(
-              id_datum, doc_id_[cur_idx_].get_datum(), result, nullptr))) {
+              id_datum, compact_ids_ ? compact_doc_ids_[cur_idx_].datum_
+                                    : doc_id_[cur_idx_].get_datum(), result, nullptr))) {
       } else if (result <= 0) {
         find = true;
       } else {
@@ -571,7 +615,8 @@ int ObTextRetrievalDaaTTokenIter::advance_to(const ObDatum &id_datum)
     } else if (cur_idx_ != 0) {
       ret = OB_ERR_UNEXPECTED;
     } else if (OB_FAIL(cmp_func_(
-                   id_datum, doc_id_[cur_idx_].get_datum(), result, nullptr))) {
+                   id_datum, compact_ids_ ? compact_doc_ids_[cur_idx_].datum_
+                                         : doc_id_[cur_idx_].get_datum(), result, nullptr))) {
     } else if (result <= 0) {
       find = true;
     } else {
@@ -603,7 +648,8 @@ int ObTextRetrievalDaaTTokenIter::get_curr_id(const ObDatum *&id_datum) const
   if (OB_UNLIKELY(cur_idx_ >= count_)) {
     ret = OB_ARRAY_OUT_OF_RANGE;
   } else {
-    id_datum = &doc_id_[cur_idx_].get_datum();
+    id_datum = compact_ids_ ? &compact_doc_ids_[cur_idx_].datum_
+                           : &doc_id_[cur_idx_].get_datum();
   }
   return ret;
 }
