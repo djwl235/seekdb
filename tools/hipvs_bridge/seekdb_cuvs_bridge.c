@@ -80,9 +80,9 @@ static void* sk_core_build(const float* base, long n, long dim)
 
   if (cuvsCagraIndexParamsCreate(&h->ip) != CUVS_SUCCESS) goto fail_res;
   h->ip->build_algo = NN_DESCENT;
-  h->ip->graph_degree = 128;
-  h->ip->intermediate_graph_degree = 256;
-  h->ip->nn_descent_niter = 40;
+  h->ip->graph_degree = 192;
+  h->ip->intermediate_graph_degree = 192;
+  h->ip->nn_descent_niter = 12;
   if (cuvsCagraIndexCreate(&h->idx)      != CUVS_SUCCESS) goto fail_ip;
   if (cuvsCagraBuild(h->res, h->ip, &dset, h->idx) != CUVS_SUCCESS) goto fail_idx;
   h->n = n; h->dim = dim;
@@ -128,10 +128,10 @@ static int sk_core_search(void* handle, const float* query, long nq, long topk,
     }
     {
       size_t required_itopk = (size_t)topk * 4;
-      if (required_itopk < 1024) required_itopk = 1024;
+      if (required_itopk < 512) required_itopk = 512;
       h->search_params->itopk_size = h->default_itopk > required_itopk ? h->default_itopk : required_itopk;
       h->search_params->search_width = 4;
-      h->search_params->algo = MULTI_CTA;
+      h->search_params->algo = AUTO;
     }
     cuvsFilter f; f.type=NO_FILTER; f.addr=(uintptr_t)0;
     if (cuvsCagraSearch(h->res, h->search_params, h->idx, &qt, &nt, &dt, f) != CUVS_SUCCESS) { rc=15; goto done; }

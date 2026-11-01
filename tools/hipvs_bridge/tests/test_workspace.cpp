@@ -41,7 +41,7 @@ int cuvsCagraIndexParamsDestroy(cuvsCagraIndexParams_t p) { free(p); --index_par
 int cuvsCagraIndexCreate(cuvsCagraIndex_t *p) { if(fail_stage==3) return 1; *p=(cuvsCagraIndex_t)calloc(1,sizeof(**p)); ++indexes; return 0; }
 int cuvsCagraIndexDestroy(cuvsCagraIndex_t p) { free(p); --indexes; return 0; }
 int cuvsCagraBuild(cuvsResources_t,cuvsCagraIndexParams_t p,DLManagedTensor *d,cuvsCagraIndex_t i) {
-  assert(p->build_algo==NN_DESCENT && p->graph_degree==128 && p->intermediate_graph_degree==256 && p->nn_descent_niter==40);
+  assert(p->build_algo==NN_DESCENT && p->graph_degree==192 && p->intermediate_graph_degree==192 && p->nn_descent_niter==12);
   if(fail_stage==4) return 1;
   i->n=d->dl_tensor.shape[0]; i->dim=d->dl_tensor.shape[1]; return 0;
 }
@@ -55,7 +55,7 @@ int cuvsCagraSearch(cuvsResources_t r,cuvsCagraSearchParams_t p,cuvsCagraIndex_t
   assert(++active==1); std::this_thread::yield();
   while(hold_search.load()) std::this_thread::yield();
   const long k=n->dl_tensor.shape[1], count=n->dl_tensor.shape[0]*k;
-  assert(p->itopk_size==(size_t)(k*4>1024?k*4:1024) && p->search_width==4 && p->algo==MULTI_CTA);
+  assert(p->itopk_size==(size_t)(k*4>512?k*4:512) && p->search_width==4 && p->algo==AUTO);
   for(long j=0;j<count;++j) { ((unsigned *)n->dl_tensor.data)[j]=(unsigned)(j%k); ((float *)d->dl_tensor.data)[j]=(float)(j%k); }
   --active; return 0;
 }

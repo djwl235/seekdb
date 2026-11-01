@@ -7,7 +7,7 @@ typedef struct { int device_type, device_id; } DLDevice;
 typedef struct { uint8_t code, bits; uint16_t lanes; } DLDataType;
 typedef struct { void *data; DLDevice device; int ndim; DLDataType dtype; int64_t *shape; int64_t *strides; uint64_t byte_offset; } DLTensor;
 typedef struct { DLTensor dl_tensor; void *manager_ctx; void *deleter; } DLManagedTensor;
-enum { kDLCPU=1, kDLCUDA=2, kDLFloat=2, kDLUInt=1, CUVS_SUCCESS=0, NN_DESCENT=1, NO_FILTER=0, MULTI_CTA=1, cudaSuccess=0, cudaMemcpyDefault=4 };
+enum { kDLCPU=1, kDLCUDA=2, kDLFloat=2, kDLUInt=1, CUVS_SUCCESS=0, NN_DESCENT=1, NO_FILTER=0, MULTI_CTA=1, AUTO=3, cudaSuccess=0, cudaMemcpyDefault=4 };
 typedef int cuvsError_t;
 typedef void *cuvsResources_t;
 typedef struct { int build_algo, graph_degree, intermediate_graph_degree, nn_descent_niter; } *cuvsCagraIndexParams_t;
