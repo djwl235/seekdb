@@ -53,6 +53,9 @@ public:
   static int detect_batch_size(
       const ObLogPlan &log_plan, int64_t &batch_size);
 
+  static int adjust_fts_ddl_batch_size(
+      const ObLogPlan &log_plan, int64_t &batch_size);
+
 private:
   //Generate expression
   //@param [in]  log_plan logical execution plan

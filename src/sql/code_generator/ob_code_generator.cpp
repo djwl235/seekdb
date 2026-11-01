@@ -20,6 +20,9 @@
 #include "sql/code_generator/ob_code_generator.h"
 #include "sql/code_generator/ob_static_engine_cg.h"
 #include "sql/engine/ob_physical_plan.h"
+#include "sql/optimizer/ob_optimizer_context.h"
+#include "sql/resolver/dml/ob_insert_stmt.h"
+#include "share/schema/ob_table_schema.h"
 
 namespace oceanbase
 {
@@ -32,6 +35,7 @@ int ObCodeGenerator::generate(const ObLogPlan &log_plan,
   int ret = OB_SUCCESS;
   int64_t batch_size = 0;
   OZ(detect_batch_size(log_plan, batch_size));
+  OZ(adjust_fts_ddl_batch_size(log_plan, batch_size));
   if (OB_SUCC(ret) && batch_size > 0) {
     log_plan.get_optimizer_context().set_batch_size(batch_size);
     phy_plan.set_batch_size(batch_size);
@@ -79,6 +83,55 @@ int ObCodeGenerator::generate_operators(const ObLogPlan &log_plan,
   int ret = OB_SUCCESS;
   ObStaticEngineCG static_engin_cg;
   if (OB_FAIL(static_engin_cg.generate(log_plan, phy_plan))) {
+  }
+  return ret;
+}
+
+int ObCodeGenerator::adjust_fts_ddl_batch_size(const ObLogPlan &log_plan, int64_t &batch_size)
+{
+  int ret = OB_SUCCESS;
+  ObOptimizerContext &opt_ctx = log_plan.get_optimizer_context();
+  const ObDMLStmt *stmt = log_plan.get_stmt();
+  // Keep scalar/single-row decisions and ordinary statements untouched. Only
+  // an already-vectorized online-DDL INSERT can expand documents into word rows.
+  if (batch_size <= 1 || !opt_ctx.is_insert_stmt_in_online_ddl()
+      || OB_ISNULL(stmt) || !stmt->is_insert_stmt()) {
+  } else {
+    ObExecContext *exec_ctx = opt_ctx.get_exec_ctx();
+    const TableItem *insert_table_item = stmt->get_table_item(0);
+    const share::schema::ObTableSchema *ddl_table_schema = nullptr;
+    if (OB_ISNULL(exec_ctx) || OB_ISNULL(exec_ctx->get_sql_ctx())
+        || OB_ISNULL(exec_ctx->get_sql_ctx()->schema_guard_)
+        || OB_ISNULL(exec_ctx->get_physical_plan_ctx()) || OB_ISNULL(insert_table_item)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_FAIL(exec_ctx->get_sql_ctx()->schema_guard_->get_table_schema(
+                         insert_table_item->ddl_table_id_, ddl_table_schema))) {
+    } else if (OB_ISNULL(ddl_table_schema)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (ddl_table_schema->is_fts_index_aux() || ddl_table_schema->is_fts_doc_word_aux()) {
+      const ObOptParamHint &opt_params = stmt->get_query_ctx()->get_global_hint().opt_params_;
+      bool has_batch_hint = false;
+      if (OB_FAIL(opt_params.has_opt_param(ObOptParamHint::ROWSETS_MAX_ROWS, has_batch_hint))) {
+      } else if (!has_batch_hint) {
+        ObArenaAllocator alloc;
+        ObRawExprUniqueSet flattened_exprs(true);
+        int64_t lob_max_rows = config::_lob_rowsets_max_rows();
+        int64_t expanded_batch_size = batch_size;
+        OZ(opt_params.get_integer_opt_param(ObOptParamHint::LOB_ROWSETS_MAX_ROWS, lob_max_rows));
+        OZ(flattened_exprs.flatten_and_add_raw_exprs(opt_ctx.get_all_exprs()));
+        ObStaticEngineExprCG expr_cg(alloc, opt_ctx.get_session_info(),
+            exec_ctx->get_sql_ctx()->schema_guard_,
+            exec_ctx->get_physical_plan_ctx()->get_original_param_cnt(), 0);
+        // Reuse every expression/LOB/frame budget. Only the source-document
+        // cardinality heuristic is inapplicable to the generated posting rows.
+        OZ(expr_cg.detect_batch_size(flattened_exprs, expanded_batch_size,
+            config::_rowsets_max_rows(), config::_rowsets_target_maxsize(),
+            ObStaticEngineExprCG::SMALL_SCAN_CARDINALITY, lob_max_rows));
+        if (OB_SUCC(ret) && expanded_batch_size > batch_size) {
+          batch_size = expanded_batch_size;
+        }
+      }
+    }
   }
   return ret;
 }

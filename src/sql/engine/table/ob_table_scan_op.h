@@ -702,6 +702,9 @@ private:
   int inner_rescan_for_tsc();
 
   int inner_get_next_fts_index_row();
+  int inner_get_next_fts_index_batch(const int64_t max_row_cnt);
+  int fetch_next_fts_index_batch_doc();
+  int fill_fts_passthrough_cols(const int64_t row_cnt);
   int fetch_next_fts_index_rows();
   int init_fts_output_exprs();
   void reset_fts_output_exprs();
