@@ -679,6 +679,8 @@ ObTableScanOp::ObTableScanOp(ObExecContext &exec_ctx, const ObOpSpec &spec, ObOp
     in_rescan_(false),
     domain_index_(),
     fts_index_(),
+    fts_output_exprs_{},
+    fts_output_exprs_inited_(false),
     output_   (nullptr),
     fold_iter_(nullptr),
     iter_tree_(nullptr),
@@ -1429,6 +1431,7 @@ int ObTableScanOp::set_need_check_outrow_lob()
 int ObTableScanOp::inner_open()
 {
   int ret = OB_SUCCESS;
+  reset_fts_output_exprs();
   DASTableLocList &table_locs = ctx_.get_das_ctx().get_table_loc_list();
   ObSQLSessionInfo *my_session = NULL;
   cur_trace_id_ = ObCurTraceId::get();
@@ -1504,6 +1507,7 @@ int ObTableScanOp::inner_open()
 int ObTableScanOp::inner_close()
 {
   int ret = OB_SUCCESS;
+  reset_fts_output_exprs();
   if (OB_NOT_NULL(scan_iter_)) {
     if (scan_iter_->has_task()) {
       int tmp_ret = fill_storage_feedback_info();
@@ -1556,6 +1560,7 @@ int ObTableScanOp::do_init_before_get_row()
 
 void ObTableScanOp::destroy()
 {
+  reset_fts_output_exprs();
   tsc_rtdef_.~ObTableScanRtDef();
   ObOperator::destroy();
   if (OB_NOT_NULL(iter_tree_)) {
@@ -1647,6 +1652,7 @@ int ObTableScanOp::fill_storage_feedback_info()
 int ObTableScanOp::inner_rescan()
 {
   int ret = OB_SUCCESS;
+  reset_fts_output_exprs();
   in_rescan_ = true;
   if (OB_FAIL(try_check_status())) {
   } else if (OB_FAIL(ObOperator::inner_rescan())) {
@@ -3685,25 +3691,51 @@ int ObTableScanOp::fetch_next_fts_index_rows()
   return ret;
 }
 
+void ObTableScanOp::reset_fts_output_exprs()
+{
+  fts_output_exprs_inited_ = false;
+  for (int64_t i = 0; i < share::ObFtsIndexBuilderUtil::OB_FTS_INDEX_OR_DOC_WORD_TABLE_COL_CNT; ++i) {
+    fts_output_exprs_[i] = nullptr;
+  }
+}
+
+int ObTableScanOp::init_fts_output_exprs()
+{
+  int ret = OB_SUCCESS;
+  const ObExprOperatorType *expr_types = MY_SPEC.is_fts_index_aux_
+      ? ObFTIndexRowCache::FTS_INDEX_EXPR_TYPE : ObFTIndexRowCache::FTS_DOC_WORD_EXPR_TYPE;
+  ObExpr *exprs[share::ObFtsIndexBuilderUtil::OB_FTS_INDEX_OR_DOC_WORD_TABLE_COL_CNT] = {};
+  for (int64_t i = 0; OB_SUCC(ret) && i < share::ObFtsIndexBuilderUtil::OB_FTS_INDEX_OR_DOC_WORD_TABLE_COL_CNT; ++i) {
+    if (OB_FAIL(get_output_fts_col_expr_by_type(expr_types[i], exprs[i]))) {
+    }
+  }
+  if (OB_SUCC(ret)) {
+    // Publish only a complete map. The pointers belong to this operator's spec,
+    // never to a source row or its LOB buffer.
+    for (int64_t i = 0; i < share::ObFtsIndexBuilderUtil::OB_FTS_INDEX_OR_DOC_WORD_TABLE_COL_CNT; ++i) {
+      fts_output_exprs_[i] = exprs[i];
+    }
+    fts_output_exprs_inited_ = true;
+  }
+  return ret;
+}
+
 int ObTableScanOp::fill_generated_fts_cols(blocksstable::ObDatumRow *row)
 {
   int ret = OB_SUCCESS;
   const ObObjDatumMapType *types = MY_SPEC.is_fts_index_aux_ ? ObFTIndexRowCache::FTS_INDEX_TYPES : ObFTIndexRowCache::FTS_DOC_WORD_TYPES;
-  const ObExprOperatorType *expr_types = MY_SPEC.is_fts_index_aux_ ? ObFTIndexRowCache::FTS_INDEX_EXPR_TYPE : ObFTIndexRowCache::FTS_DOC_WORD_EXPR_TYPE;
   if (OB_ISNULL(row)) {
     ret = OB_INVALID_ARGUMENT;
+  } else if (!fts_output_exprs_inited_ && OB_FAIL(init_fts_output_exprs())) {
   } else {
     for (int64_t i = 0; OB_SUCC(ret) && i < share::ObFtsIndexBuilderUtil::OB_FTS_INDEX_OR_DOC_WORD_TABLE_COL_CNT; ++i) {
-      ObExpr *expr = nullptr;
-      if (OB_FAIL(get_output_fts_col_expr_by_type(expr_types[i], expr))) {
+      ObExpr *expr = fts_output_exprs_[i];
+      ObDatum &datum = expr->locate_datum_for_write(eval_ctx_);
+      ObEvalInfo &eval_info = expr->get_eval_info(eval_ctx_);
+      if (OB_FAIL(datum.from_storage_datum(row->storage_datums_[i], types[i]))) {
       } else {
-        ObDatum &datum = expr->locate_datum_for_write(eval_ctx_);
-        ObEvalInfo &eval_info = expr->get_eval_info(eval_ctx_);
-        if (OB_FAIL(datum.from_storage_datum(row->storage_datums_[i], types[i]))) {
-        } else {
-          eval_info.evaluated_ = true;
-          eval_info.projected_ = true;
-        }
+        eval_info.evaluated_ = true;
+        eval_info.projected_ = true;
       }
     }
   }
