@@ -22,6 +22,8 @@
 #include "sql/rewrite/ob_expand_aggregate_utils.h"
 #include "sql/pl/ob_pl_resolver.h"
 #include "sql/engine/expr/ob_expr_align_date4cmp.h"
+#include "sql/ob_sql_utils.h"
+#include "sql/resolver/expr/ob_raw_expr_util.h"
 #include "query/vector/ob_vector_index_util.h"
 
 using namespace oceanbase::common;
@@ -196,6 +198,13 @@ int ObTransformPreProcess::transform_one_stmt(common::ObIArray<ObParentDMLStmt> 
       } else {
         trans_happened |= is_happened;
         OPT_TRACE("transform exprs:", is_happened);
+      }
+    }
+    if (OB_SUCC(ret)) {
+      if (OB_FAIL(fold_const_tokenize_exprs(stmt, is_happened))) {
+      } else {
+        trans_happened |= is_happened;
+        OPT_TRACE("fold constant tokenize exprs:", is_happened);
       }
     }
     /*transform_for_nested_aggregate, transformer_aggr_expr two functions are strongly dependent, must ensure the order of rewriting both*/
@@ -1125,6 +1134,118 @@ int ObTransformPreProcess::transform_expr(ObRawExprFactory &expr_factory,
   if (OB_SUCC(ret)) {
     if (OB_FAIL(replace_inner_row_cmp_val_recursively(expr_factory, session,
                                                       expr, trans_happened))) {
+    }
+  }
+  return ret;
+}
+
+// Static within one execution does not mean immutable across cached-plan uses.
+// Exclude user/system variables and the engine's non-pure system functions at
+// every nesting level, including session identity, current time and last ID.
+// Deep trees conservatively use the normal evaluator instead of recursing more.
+static bool expr_contains_runtime_state(const ObRawExpr *expr, const int64_t depth = 0)
+{
+  bool contains = false;
+  bool non_pure = false;
+  if (OB_ISNULL(expr)) {
+    // nothing to check
+  } else if (depth >= 64 || T_OP_GET_USER_VAR == expr->get_expr_type()
+             || T_OP_GET_SYS_VAR == expr->get_expr_type()
+             || OB_SUCCESS != expr->is_non_pure_sys_func_expr(non_pure)
+             || non_pure) {
+    contains = true;
+  } else {
+    for (int64_t i = 0; !contains && i < expr->get_param_count(); ++i) {
+      contains = expr_contains_runtime_state(expr->get_param_expr(i), depth + 1);
+    }
+  }
+  return contains;
+}
+
+// TOKENIZE() over literal arguments is a deterministic expression: its value only
+// depends on the arguments (plus the dictionary state, which is process-wide and
+// immutable while the plan is cached). This optimizer does not constant-fold
+// select-list expressions, so without this pass a repeated literal statement
+// re-runs the whole tokenizer on every execution even though its plan is cached.
+// Fold the result once while planning and let the plan cache reuse the constant.
+int ObTransformPreProcess::fold_const_tokenize_exprs(ObDMLStmt *stmt, bool &trans_happened)
+{
+  int ret = OB_SUCCESS;
+  trans_happened = false;
+  if (OB_ISNULL(stmt) || OB_ISNULL(ctx_) || OB_ISNULL(ctx_->expr_factory_)
+      || OB_ISNULL(ctx_->session_info_) || OB_ISNULL(ctx_->exec_ctx_)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else {
+    // SELECT list items (the common shape of a tokenize/JSON projection). A
+    // tokenize projection does not reference any table, so it is never part of
+    // the relation exprs the transform stage normally rewrites.
+    if (OB_SUCC(ret) && stmt->is_select_stmt()) {
+      ObSelectStmt *select_stmt = static_cast<ObSelectStmt *>(stmt);
+      for (int64_t i = 0; OB_SUCC(ret) && i < select_stmt->get_select_item_size(); ++i) {
+        SelectItem &item = select_stmt->get_select_item(i);
+        bool folded = false;
+        if (OB_ISNULL(item.expr_)) {
+          ret = OB_ERR_UNEXPECTED;
+        } else if (OB_FAIL(fold_const_tokenize_expr(*ctx_->expr_factory_, item.expr_, folded))) {
+        } else if (folded) {
+          trans_happened = true;
+        }
+      }
+    }
+    // Folding is only done for SELECT list items, exactly the place where the
+    // resolver registers the plan-cache const constraints for TOKENIZE arguments.
+    // Relation expressions are deliberately left alone so that every folded
+    // expression has a matching constraint registration scope.
+  }
+  return ret;
+}
+
+int ObTransformPreProcess::fold_const_tokenize_expr(ObRawExprFactory &expr_factory,
+                                                    ObRawExpr *&expr,
+                                                    bool &folded)
+{
+  int ret = OB_SUCCESS;
+  folded = false;
+  if (OB_ISNULL(expr) || OB_ISNULL(ctx_) || OB_ISNULL(ctx_->exec_ctx_)
+      || OB_ISNULL(ctx_->allocator_)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else if (T_FUN_TOKENIZE == expr->get_expr_type()
+             && !expr_contains_runtime_state(expr)
+             && expr->is_static_scalar_const_expr()
+             && !expr->has_flag(CNT_CUR_TIME)
+             && !expr->has_flag(CNT_LAST_INSERT_ID)
+             && !expr->has_flag(CNT_SUB_QUERY)
+             && !expr->has_flag(CNT_PL_UDF)) {
+    ObObj result;
+    ObConstRawExpr *const_expr = NULL;
+    const ObPhysicalPlanCtx *plan_ctx = ctx_->exec_ctx_->get_physical_plan_ctx();
+    int tmp_ret = OB_ERR_UNEXPECTED;
+    if (OB_ISNULL(plan_ctx)) {
+      tmp_ret = OB_ERR_UNEXPECTED;
+    } else {
+      // force_copy_extend_type = true: the JSON token array is an extended type and
+      // would otherwise stay in the temporary evaluation context and dangle after
+      // this pass, so copy it into the plan's own allocator.
+      tmp_ret = ObSQLUtils::calc_const_expr(ctx_->exec_ctx_->get_my_session(),
+                                            *expr,
+                                            result,
+                                            *ctx_->allocator_,
+                                            plan_ctx->get_param_store(),
+                                            ctx_->exec_ctx_,
+                                            true);
+    }
+    if (OB_SUCCESS != tmp_ret) {
+      // Folding is an optimization: any problem while pre-evaluating (warning,
+      // unsupported value, dictionary not loadable during planning) simply keeps
+      // the normal per-execution evaluation instead of failing the query.
+      LOG_WARN("failed to pre-evaluate constant tokenize expression, keep it", K(tmp_ret));
+    } else if (OB_FAIL(ObRawExprUtils::build_const_obj_expr(expr_factory, result, const_expr))) {
+    } else if (OB_ISNULL(const_expr)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      const_expr->set_result_type(expr->get_result_type());
+      expr = const_expr;
+      folded = true;
     }
   }
   return ret;

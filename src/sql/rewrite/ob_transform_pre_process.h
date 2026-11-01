@@ -140,6 +140,9 @@ private:
                             common::ObArray<TableItem*> &table_item_list);
 
   int transform_exprs(ObDMLStmt *stmt, bool &trans_happened);
+  // Fold deterministic SELECT-list TOKENIZE; resolver binds literal parameters.
+  int fold_const_tokenize_exprs(ObDMLStmt *stmt, bool &trans_happened);
+  int fold_const_tokenize_expr(ObRawExprFactory &expr_factory, ObRawExpr *&expr, bool &folded);
   int transform_for_nested_aggregate(ObDMLStmt *&stmt, bool &trans_happened);
   int generate_child_level_aggr_stmt(ObSelectStmt *stmt, ObSelectStmt *&sub_stmt);
   int get_inner_aggr_exprs(ObSelectStmt *sub_stmt, common::ObIArray<ObAggFunRawExpr*>& inner_aggr_exprs);
