@@ -82,7 +82,7 @@ static void* sk_core_build(const float* base, long n, long dim)
   h->ip->build_algo = NN_DESCENT;
   h->ip->graph_degree = 128;
   h->ip->intermediate_graph_degree = 256;
-  h->ip->nn_descent_niter = 100;
+  h->ip->nn_descent_niter = 50;
   if (cuvsCagraIndexCreate(&h->idx)      != CUVS_SUCCESS) goto fail_ip;
   if (cuvsCagraBuild(h->res, h->ip, &dset, h->idx) != CUVS_SUCCESS) goto fail_idx;
   h->n = n; h->dim = dim;
@@ -128,7 +128,7 @@ static int sk_core_search(void* handle, const float* query, long nq, long topk,
     }
     {
       size_t required_itopk = (size_t)topk * 4;
-      if (required_itopk < 512) required_itopk = 512;
+      if (required_itopk < 1024) required_itopk = 1024;
       h->search_params->itopk_size = h->default_itopk > required_itopk ? h->default_itopk : required_itopk;
       h->search_params->search_width = 4;
     }
