@@ -15,6 +15,8 @@ typedef struct { size_t itopk_size, search_width; } *cuvsCagraSearchParams_t;
 typedef struct { int64_t n, dim; } *cuvsCagraIndex_t;
 typedef struct { int type; uintptr_t addr; } cuvsFilter;
 int cuvsResourcesCreate(cuvsResources_t *); int cuvsResourcesDestroy(cuvsResources_t);
+int cuvsStreamSync(cuvsResources_t);
+int cudaGetDevice(int *); int cudaSetDevice(int);
 int cuvsCagraIndexParamsCreate(cuvsCagraIndexParams_t *); int cuvsCagraIndexParamsDestroy(cuvsCagraIndexParams_t);
 int cuvsCagraIndexCreate(cuvsCagraIndex_t *); int cuvsCagraIndexDestroy(cuvsCagraIndex_t);
 int cuvsCagraBuild(cuvsResources_t,cuvsCagraIndexParams_t,DLManagedTensor *,cuvsCagraIndex_t);

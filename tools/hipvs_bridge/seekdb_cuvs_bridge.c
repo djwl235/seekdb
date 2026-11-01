@@ -61,7 +61,7 @@ static int sk_reserve(sk_cuvs_index *h, void **ptr, size_t *capacity, size_t byt
   return 1;
 }
 
-void* seekdb_cuvs_build(const float* base, long n, long dim)
+static void* sk_core_build(const float* base, long n, long dim)
 {
   size_t bytes;
   if (!base || n > UINT_MAX || !sk_bytes(n, dim, sizeof(float), &bytes)) return NULL;
@@ -96,7 +96,7 @@ fail_res: cuvsResourcesDestroy(h->res); sk_compact_end(&affinity); pthread_mutex
   return NULL;
 }
 
-int seekdb_cuvs_search(void* handle, const float* query, long nq, long topk,
+static int sk_core_search(void* handle, const float* query, long nq, long topk,
                        unsigned int* out_ids, float* out_dist)
 {
   sk_cuvs_index* h = (sk_cuvs_index*)handle;
@@ -144,7 +144,7 @@ done:
   return rc;
 }
 
-void seekdb_cuvs_free(void* handle)
+static void sk_core_free(void* handle)
 {
   sk_cuvs_index* h = (sk_cuvs_index*)handle;
   if (!h) return;
@@ -157,7 +157,7 @@ void seekdb_cuvs_free(void* handle)
   free(h);
 }
 
-int seekdb_cuvs_serialize(void* handle, const char* filename)
+static int sk_core_serialize(void* handle, const char* filename)
 {
   sk_cuvs_index* index = (sk_cuvs_index*)handle;
   if (!index || !filename) return 1;
@@ -171,7 +171,7 @@ int seekdb_cuvs_serialize(void* handle, const char* filename)
   return 0;
 }
 
-void* seekdb_cuvs_deserialize(const char* filename, long n, long dim)
+static void* sk_core_deserialize(const char* filename, long n, long dim)
 {
   size_t bytes;
   if (!filename || n > UINT_MAX || !sk_bytes(n, dim, sizeof(float), &bytes)) return NULL;
@@ -208,6 +208,175 @@ fail:
   free(index);
   return NULL;
 }
+
+/* All GPU objects, streams and their teardown live on one joinable large-stack
+ * worker per index. The existing outer adaptor's large-stack boundary remains.
+ * The control lock is separate from sk_cuvs_index::mutex: core calls never run
+ * while this lock is held. A single slot bounds queued work and caller buffers
+ * remain borrowed only until the synchronous submit returns. */
+typedef struct sk_worker sk_worker;
+typedef int (*sk_job_fn)(sk_worker *, void *);
+struct sk_worker {
+  pthread_t thread;
+  pthread_mutex_t control;
+  pthread_cond_t changed;
+  void *core;
+  sk_job_fn job;
+  void *argument;
+  unsigned active;
+  int device, startup_done, startup_rc, stopping, busy, ready, done, result;
+};
+
+static void *sk_worker_main(void *opaque)
+{
+  sk_worker *w = (sk_worker *)opaque;
+  int rc = cudaSetDevice(w->device) == cudaSuccess ? 0 : 1;
+  pthread_mutex_lock(&w->control);
+  w->startup_rc = rc;
+  w->startup_done = 1;
+  pthread_cond_broadcast(&w->changed);
+  if (rc) { pthread_mutex_unlock(&w->control); return NULL; }
+  for (;;) {
+    while (!w->ready && !w->stopping) pthread_cond_wait(&w->changed, &w->control);
+    if (!w->ready && w->stopping) break;
+    sk_job_fn job = w->job;
+    void *argument = w->argument;
+    w->ready = 0;
+    pthread_mutex_unlock(&w->control);
+    rc = job(w, argument);
+    /* Even an unsuccessful API may have enqueued work. Never release borrowed
+     * host pointers, change jobs or tear resources down before the stream ends. */
+    if (w->core && cuvsStreamSync(((sk_cuvs_index *)w->core)->res) != CUVS_SUCCESS) {
+      fprintf(stderr, "[seekdb_cuvs] worker stream sync failed: %s\n", cuvsGetLastErrorText());
+      if (!rc) rc = 18;
+    }
+    pthread_mutex_lock(&w->control);
+    w->result = rc;
+    w->done = 1;
+    pthread_cond_broadcast(&w->changed);
+  }
+  pthread_mutex_unlock(&w->control);
+  if (w->core) sk_core_free(w->core);
+  return NULL;
+}
+
+static sk_worker *sk_worker_create(void)
+{
+  sk_worker *w = (sk_worker *)calloc(1, sizeof(*w));
+  pthread_attr_t attr;
+  int rc;
+  if (!w) return NULL;
+  if (cudaGetDevice(&w->device) != cudaSuccess) { free(w); return NULL; }
+  if (pthread_mutex_init(&w->control, NULL)) { free(w); return NULL; }
+  if (pthread_cond_init(&w->changed, NULL)) { pthread_mutex_destroy(&w->control); free(w); return NULL; }
+  if (pthread_attr_init(&attr)) goto fail;
+  rc = pthread_attr_setstacksize(&attr, 32UL * 1024 * 1024);
+  if (!rc) rc = pthread_create(&w->thread, &attr, sk_worker_main, w);
+  pthread_attr_destroy(&attr);
+  if (rc) goto fail;
+  pthread_mutex_lock(&w->control);
+  while (!w->startup_done) pthread_cond_wait(&w->changed, &w->control);
+  rc = w->startup_rc;
+  pthread_mutex_unlock(&w->control);
+  if (!rc) return w;
+  pthread_join(w->thread, NULL);
+fail:
+  pthread_cond_destroy(&w->changed);
+  pthread_mutex_destroy(&w->control);
+  free(w);
+  return NULL;
+}
+
+static int sk_worker_submit(sk_worker *w, sk_job_fn job, void *argument)
+{
+  if (!w) return 1;
+  pthread_mutex_lock(&w->control);
+  ++w->active; /* Includes callers waiting for the one bounded slot. */
+  while (w->busy && !w->stopping) pthread_cond_wait(&w->changed, &w->control);
+  if (w->stopping) {
+    --w->active;
+    pthread_cond_broadcast(&w->changed);
+    pthread_mutex_unlock(&w->control);
+    return 1;
+  }
+  w->busy = 1;
+  w->done = 0;
+  w->argument = argument;
+  w->job = job;
+  w->ready = 1;
+  pthread_cond_broadcast(&w->changed);
+  while (!w->done) pthread_cond_wait(&w->changed, &w->control);
+  int rc = w->result;
+  w->argument = NULL;
+  w->busy = 0;
+  --w->active;
+  pthread_cond_broadcast(&w->changed);
+  pthread_mutex_unlock(&w->control);
+  return rc;
+}
+
+void seekdb_cuvs_free(void *handle)
+{
+  sk_worker *w = (sk_worker *)handle;
+  if (!w) return;
+  /* As for the original C handle API, ownership must prevent new calls after
+   * free begins. Already registered executing/queued callers are drained. */
+  pthread_mutex_lock(&w->control);
+  w->stopping = 1;
+  pthread_cond_broadcast(&w->changed);
+  while (w->active) pthread_cond_wait(&w->changed, &w->control);
+  pthread_mutex_unlock(&w->control);
+  pthread_join(w->thread, NULL);
+  pthread_cond_destroy(&w->changed);
+  pthread_mutex_destroy(&w->control);
+  free(w);
+}
+
+typedef struct { const float *base; const char *filename; long n, dim; } sk_open_args;
+static int sk_open_job(sk_worker *w, void *opaque)
+{
+  sk_open_args *a = (sk_open_args *)opaque;
+  w->core = a->filename ? sk_core_deserialize(a->filename, a->n, a->dim)
+                        : sk_core_build(a->base, a->n, a->dim);
+  return w->core ? 0 : 1;
+}
+
+static void *sk_open(const float *base, const char *filename, long n, long dim)
+{
+  size_t bytes;
+  if ((!base && !filename) || n > UINT_MAX || !sk_bytes(n, dim, sizeof(float), &bytes)) return NULL;
+  sk_worker *w = sk_worker_create();
+  if (!w) return NULL;
+  sk_open_args a = {base, filename, n, dim};
+  if (sk_worker_submit(w, sk_open_job, &a)) { seekdb_cuvs_free(w); return NULL; }
+  return w;
+}
+
+void *seekdb_cuvs_build(const float *base, long n, long dim)
+{ return sk_open(base, NULL, n, dim); }
+
+void *seekdb_cuvs_deserialize(const char *filename, long n, long dim)
+{ return sk_open(NULL, filename, n, dim); }
+
+typedef struct { const float *query; long nq, topk; unsigned *ids; float *dist; } sk_search_args;
+static int sk_search_job(sk_worker *w, void *opaque)
+{
+  sk_search_args *a = (sk_search_args *)opaque;
+  return sk_core_search(w->core, a->query, a->nq, a->topk, a->ids, a->dist);
+}
+
+int seekdb_cuvs_search(void *handle, const float *query, long nq, long topk,
+                       unsigned *ids, float *dist)
+{
+  sk_search_args a = {query, nq, topk, ids, dist};
+  return sk_worker_submit((sk_worker *)handle, sk_search_job, &a);
+}
+
+static int sk_serialize_job(sk_worker *w, void *filename)
+{ return sk_core_serialize(w->core, (const char *)filename); }
+
+int seekdb_cuvs_serialize(void *handle, const char *filename)
+{ return sk_worker_submit((sk_worker *)handle, sk_serialize_job, (void *)filename); }
 
 int seekdb_cuvs_cagra_knn(const float* base, long n, long dim,
                           const float* query, long nq, long topk,
