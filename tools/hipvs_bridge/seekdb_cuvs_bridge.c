@@ -131,6 +131,7 @@ static int sk_core_search(void* handle, const float* query, long nq, long topk,
       if (required_itopk < 1024) required_itopk = 1024;
       h->search_params->itopk_size = h->default_itopk > required_itopk ? h->default_itopk : required_itopk;
       h->search_params->search_width = 4;
+      h->search_params->algo = MULTI_CTA;
     }
     cuvsFilter f; f.type=NO_FILTER; f.addr=(uintptr_t)0;
     if (cuvsCagraSearch(h->res, h->search_params, h->idx, &qt, &nt, &dt, f) != CUVS_SUCCESS) { rc=15; goto done; }

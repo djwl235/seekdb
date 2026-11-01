@@ -55,7 +55,7 @@ int cuvsCagraSearch(cuvsResources_t r,cuvsCagraSearchParams_t p,cuvsCagraIndex_t
   assert(++active==1); std::this_thread::yield();
   while(hold_search.load()) std::this_thread::yield();
   const long k=n->dl_tensor.shape[1], count=n->dl_tensor.shape[0]*k;
-  assert(p->itopk_size==(size_t)(k*4>1024?k*4:1024) && p->search_width==4);
+  assert(p->itopk_size==(size_t)(k*4>1024?k*4:1024) && p->search_width==4 && p->algo==MULTI_CTA);
   for(long j=0;j<count;++j) { ((unsigned *)n->dl_tensor.data)[j]=(unsigned)(j%k); ((float *)d->dl_tensor.data)[j]=(float)(j%k); }
   --active; return 0;
 }
