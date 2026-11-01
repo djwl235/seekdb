@@ -376,8 +376,17 @@ struct ObDatumStrCmpImpl
   static int OB_INLINE cmp(const ObDatum &l, const ObDatum &r, int &cmp_ret,
                            const ObCollationType cs, const bool with_end_space)
   {
-    cmp_ret = ObCharset::strcmpsp(cs, l.ptr_, l.len_, r.ptr_, r.len_, with_end_space);
-    cmp_ret = cmp_ret > 0 ? 1 : (cmp_ret < 0 ? -1 : 0);
+    if (ObCharset::is_valid_collation(cs) && l.len_ == r.len_
+        && (0 == l.len_ || (nullptr != l.ptr_ && nullptr != r.ptr_
+            && (l.ptr_ == r.ptr_ || 0 == MEMCMP(l.ptr_, r.ptr_, l.len_))))) {
+      // Byte-identical strings have equal collation weights. Avoid repeating
+      // the charset walk for duplicate sort keys; never dereference empty data.
+      cmp_ret = 0;
+    } else {
+      // Different lengths still need the original trailing-space semantics.
+      cmp_ret = ObCharset::strcmpsp(cs, l.ptr_, l.len_, r.ptr_, r.len_, with_end_space);
+      cmp_ret = cmp_ret > 0 ? 1 : (cmp_ret < 0 ? -1 : 0);
+    }
     return OB_SUCCESS;
   }
 };
