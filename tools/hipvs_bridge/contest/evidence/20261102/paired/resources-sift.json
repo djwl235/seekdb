@@ -1,0 +1,20 @@
+{
+  "baseline": {
+    "samples": 4200,
+    "peak_vram_bytes": 732938240,
+    "peak_host_rss_bytes": 2796929024,
+    "sample_period_seconds": 110.443313283
+  },
+  "candidate": {
+    "samples": 1283,
+    "peak_vram_bytes": 792985600,
+    "peak_host_rss_bytes": 2478972928,
+    "sample_period_seconds": 25.933154391
+  },
+  "gpu_path": "UNKNOWN",
+  "official_score": "UNKNOWN",
+  "note": "20ms polling can miss peaks; confirm with external profiler/provider peak counters",
+  "sampled_physical_vram_gate": true,
+  "sampled_relative_vram_gate": true,
+  "sampled_host_memory_gate": true
+}

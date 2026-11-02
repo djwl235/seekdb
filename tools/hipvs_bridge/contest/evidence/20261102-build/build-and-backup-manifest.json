@@ -1,0 +1,77 @@
+{
+  "source_commit": "24b972ab8500e29b4e750f8bee7a6b5c5f5193a3",
+  "fresh_build_release": true,
+  "official_three_commands_exit": 0,
+  "CMAKE_BUILD_PARALLEL_LEVEL": 8,
+  "CARGO_BUILD_JOBS": 1,
+  "binary_sha256": "bb914969f8efcbebd08c4a7425b9389891a96956a1e56797b63ee07571a60cc7",
+  "bridge_sha256": "443a02fb52e00123b409ba141de070d7328fb3150a4211fb9640b5d4264953ea",
+  "gzip_sha256": "aba981f1e9e11ba855604449d0b14bfcd36a4e88c89146e1c2781b621a4cf956",
+  "gzip_bytes": 394392310,
+  "parts": [
+    {
+      "name": "seekdb-24b972ab8-000.part",
+      "bytes": 33554432,
+      "sha256": "34fd78c8e674b97de1c97f2ba27e10fa2f99bd8a867666c0cb251caab25205b9"
+    },
+    {
+      "name": "seekdb-24b972ab8-001.part",
+      "bytes": 33554432,
+      "sha256": "ee8fc328d54d81b39213b0c21b024e6bf64b3bee55c474948d2c64d061c1e181"
+    },
+    {
+      "name": "seekdb-24b972ab8-002.part",
+      "bytes": 33554432,
+      "sha256": "769e284a63bf889f06b6b21e911bb6a6ab6e62da77f1b80102ff947aae7f6a9b"
+    },
+    {
+      "name": "seekdb-24b972ab8-003.part",
+      "bytes": 33554432,
+      "sha256": "38badcc9ed72568369b9269ab458ff71fecbca054a2ee182ac7d73c5c1e860e6"
+    },
+    {
+      "name": "seekdb-24b972ab8-004.part",
+      "bytes": 33554432,
+      "sha256": "fc9d22d093c855168797a247b746f1f34a0d2cbdd04e25591991c81f937979f1"
+    },
+    {
+      "name": "seekdb-24b972ab8-005.part",
+      "bytes": 33554432,
+      "sha256": "dfb826841592d107c7b0d3d97ca41204b240ff79487d1fc0aad6d75f41756bd1"
+    },
+    {
+      "name": "seekdb-24b972ab8-006.part",
+      "bytes": 33554432,
+      "sha256": "0f231627333d9c5853cb5b93816f2acf909ed9850a91093cba7ca688ce811f44"
+    },
+    {
+      "name": "seekdb-24b972ab8-007.part",
+      "bytes": 33554432,
+      "sha256": "3e1eb5da57d57a02eff474e11e33b7855e50830347fb896f51b3b6adb3b67c51"
+    },
+    {
+      "name": "seekdb-24b972ab8-008.part",
+      "bytes": 33554432,
+      "sha256": "eff66f86969a69727429203d997076928555bfb9c98c3a897c0ca6b4b9d3f69d"
+    },
+    {
+      "name": "seekdb-24b972ab8-009.part",
+      "bytes": 33554432,
+      "sha256": "2d6e6292a646c1028bdee1d51c06965d9c9fd94b854521a19260c6194570b3be"
+    },
+    {
+      "name": "seekdb-24b972ab8-010.part",
+      "bytes": 33554432,
+      "sha256": "72779c8b0070c2bd59938ef1c4597da4dca6411662e87852b74d86f2831eb178"
+    },
+    {
+      "name": "seekdb-24b972ab8-011.part",
+      "bytes": 25293558,
+      "sha256": "c0de01ab9679e251985cc99d32a661ba2fa93c90d5e3657701ac9f2c7d50038c"
+    }
+  ],
+  "native": "PASS_NATIVE_OBSERVABLES_WITH_INTERNAL_TRACE_UNKNOWN",
+  "pair_metrics_host_origin": "cd3323 same entire non-bridge source; old pair evidence unchanged",
+  "official_score": "UNKNOWN",
+  "updated_utc": "2026-11-02T02:40:55.455303+00:00"
+}

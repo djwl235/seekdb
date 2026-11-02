@@ -1,0 +1,50 @@
+{
+  "classification": "PACKAGING_QA_NOT_NEW_BENCHMARK",
+  "original_files_verified": 38,
+  "plain_original_files": 30,
+  "archive_original_files": 8,
+  "query_rows_verified": 32768,
+  "zip_crc_and_sha256_readback": "PASS",
+  "selected_files_match_original_manifest": "PASS",
+  "credential_pattern_scan": "PASS",
+  "binaries_vectors_auth_configuration_included": false,
+  "original_unknown_pending_fields": "PRESERVED_BYTE_FOR_BYTE",
+  "summary": [
+    {
+      "case": "1-sift-baseline",
+      "role": "public-sift",
+      "build_to_first_query_seconds": 46.995653305668384,
+      "qps10": 148.77730200613232,
+      "recall10": 0.999951171875,
+      "qps100": 137.14174116125926,
+      "recall100": 0.99997314453125
+    },
+    {
+      "case": "2-sift-candidate",
+      "role": "public-sift",
+      "build_to_first_query_seconds": 9.880297942087054,
+      "qps10": 938.0920020100036,
+      "recall10": 0.9999755859375,
+      "qps100": 693.2190528484841,
+      "recall100": 0.99995361328125
+    },
+    {
+      "case": "3-hidden-candidate",
+      "role": "diagnostic-256",
+      "build_to_first_query_seconds": 12.505215912591666,
+      "qps10": 683.1554293142754,
+      "recall10": 0.99052734375,
+      "qps100": 723.3631600604608,
+      "recall100": 0.97781982421875
+    },
+    {
+      "case": "4-hidden-baseline",
+      "role": "diagnostic-256",
+      "build_to_first_query_seconds": 48.109904557000846,
+      "qps10": 129.1145054114982,
+      "recall10": 0.95107421875,
+      "qps100": 122.1067218002648,
+      "recall100": 0.89861572265625
+    }
+  ]
+}

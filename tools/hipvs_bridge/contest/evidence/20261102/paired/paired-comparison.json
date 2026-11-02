@@ -1,0 +1,50 @@
+{
+  "official_score": "UNKNOWN",
+  "gpu_path": "UNKNOWN",
+  "vram_gate": "UNKNOWN",
+  "host_resource_gate": "UNKNOWN",
+  "cold_cache_and_same_hardware": "EXTERNAL_EVIDENCE_REQUIRED",
+  "datasets": {
+    "sift": {
+      "weight": 0.4,
+      "quality": {
+        "10": {
+          "absolute": true,
+          "baseline_delta": true
+        },
+        "100": {
+          "absolute": true,
+          "baseline_delta": true
+        }
+      },
+      "query_gate": true,
+      "dataset_role": "public-sift",
+      "query_ratio": 5.645530955533706,
+      "build_ratio": 4.756501633972113
+    },
+    "hidden": {
+      "weight": 0.6,
+      "quality": {
+        "10": {
+          "absolute": true,
+          "baseline_delta": true
+        },
+        "100": {
+          "absolute": true,
+          "baseline_delta": true
+        }
+      },
+      "query_gate": true,
+      "dataset_role": "diagnostic-256",
+      "query_ratio": 5.59861562202358,
+      "build_ratio": 3.8471870372552583
+    }
+  },
+  "note": "Numbers below are conditional local SQL metrics, not an official result.",
+  "local_weighted_build_ratio": 4.187945685401839,
+  "local_weighted_query_ratio": 5.617334788142933,
+  "conditional_performance_points_if_all_external_gates_pass": {
+    "build": 14,
+    "query": 2
+  }
+}

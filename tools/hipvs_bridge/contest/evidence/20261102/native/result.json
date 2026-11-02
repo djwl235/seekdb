@@ -1,0 +1,109 @@
+{
+  "classification": "NATIVE_TRANSPORT_ADAPTATION_NOT_ORIGINAL_DOCKER_TEST",
+  "status": "PASS_NATIVE_OBSERVABLES_WITH_INTERNAL_TRACE_UNKNOWN",
+  "original_docker_test": "NOT_RUN",
+  "frozen_commit": "634888d9b037153fa143d2c913ba4b25503e1d62",
+  "original_script_blob": "30b52dd8c1beb78ee2eac38b936dcbba4b0d9dd9",
+  "adapter_sha256": "0e96e34d764569e1590075b8d82c03a1c46689a3cb09381e90f82d2fc11c6978",
+  "binary_sha256": "a0dc4e7f216ca4fc7f7d35e7a1ab2e6271a2feacda72aec3a3aa199979de03d1",
+  "bridge_sha256": "443a02fb52e00123b409ba141de070d7328fb3150a4211fb9640b5d4264953ea",
+  "source_commit_declared": "24b972ab8500e29b4e750f8bee7a6b5c5f5193a3",
+  "source_files": {
+    "tools/hipvs_bridge/seekdb_cuvs_bridge.c": "29440814b0f3c15e4419c1611945f512322ec5e34518b1deaa149fa52f3e7a1f",
+    "tools/hipvs_bridge/seekdb_cuvs_bridge.h": "d171cd16e1f89b3ad1e86332aafebdd1da1a2c33793bc0d43ee01e09e6a0faab",
+    "tools/hipvs_bridge/sk_cpu_affinity.h": "e5e48f82b08d44148689304867d27557b750b3dc503d4b3f314307ef59b662a5",
+    "src/oblib/lib/vector/ob_vsag_adaptor.cpp": "febc6b620503bcfcfed543f10484249aad5b676e0d28053113849f26fcb6a2e7",
+    "src/observer/vector_index/ob_plugin_vector_index_adaptor.cpp": "b40b92354524dd4e88c143ab024a5ca1af75b6a789e4ce9676bd48e72f88419c"
+  },
+  "input_sha256": "f82a0ef923b2dbfffd4aebf4ecbea8494058658d02d7ab16b8912aa9dae701d0",
+  "upstream_data_sha256": "dd6f0a6ed6b7ebb8934680f861a33ed01ff33991eaee4fd60914d854a0ca5984",
+  "trace_build": "OFF",
+  "internal_trace_checks": [
+    {
+      "artifact": "first.trace",
+      "assertion": "cuvs_serve present",
+      "status": "UNKNOWN_TRACE_OFF"
+    },
+    {
+      "artifact": "restart.trace",
+      "assertion": "cuvs_serve present",
+      "status": "UNKNOWN_TRACE_OFF"
+    },
+    {
+      "artifact": "restart.trace",
+      "assertion": "cuvs_build absent",
+      "status": "UNKNOWN_TRACE_OFF"
+    },
+    {
+      "artifact": "cpu-restart.trace",
+      "assertion": "fdeserialize present",
+      "status": "UNKNOWN_TRACE_OFF"
+    },
+    {
+      "artifact": "cpu-restart.trace",
+      "assertion": "cuvs_ absent",
+      "status": "UNKNOWN_TRACE_OFF"
+    }
+  ],
+  "checks": [
+    {
+      "name": "pre_ddl_rows_at_least_10000",
+      "status": "PASS"
+    },
+    {
+      "name": "first_rows_10",
+      "status": "PASS"
+    },
+    {
+      "name": "first_exact_ordered_ids",
+      "status": "PASS"
+    },
+    {
+      "name": "restart_exact_ordered_ids",
+      "status": "PASS"
+    },
+    {
+      "name": "cpu_restart_exact_ordered_ids",
+      "status": "PASS"
+    },
+    {
+      "name": "lifecycle_log_not_truncated",
+      "status": "PASS"
+    },
+    {
+      "name": "serialized_gpu_snapshot_built_true",
+      "status": "PASS"
+    },
+    {
+      "name": "deserialized_gpu_snapshot_graph_bytes_positive",
+      "status": "PASS"
+    },
+    {
+      "name": "no_eager_vsag_fallback",
+      "status": "PASS"
+    },
+    {
+      "name": "delete_exact_ordered_ids",
+      "status": "PASS"
+    },
+    {
+      "name": "deleted_id_absent",
+      "status": "PASS"
+    },
+    {
+      "name": "insert_exact_ordered_ids",
+      "status": "PASS"
+    },
+    {
+      "name": "inserted_id_present",
+      "status": "PASS"
+    }
+  ],
+  "started_utc": "2026-11-02T02:24:37Z",
+  "original_script_sha256": "63486d68002278d0deb7c82f193b78d25b52830b1338ecfcca9eff28130cd803",
+  "pymysql_version": "1.2.3",
+  "input_rows": 10000,
+  "pre_ddl_rows": 10000,
+  "exit_code": 0,
+  "finished_utc": "2026-11-02T02:24:47Z"
+}

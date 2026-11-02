@@ -1,0 +1,278 @@
+{
+  "candidate_product_commit": "24b972ab8500e29b4e750f8bee7a6b5c5f5193a3",
+  "scope": "Selected evidence only; not the original 62-file asset inventory.",
+  "source_manifest_sha256": "ae288592ecdc2d0d3ea7ddd996aa3d8599c0f62b28628e88066316397150d61d",
+  "files": [
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/artifact-combination.json",
+      "path": "paired/artifact-combination.json",
+      "bytes": 1073,
+      "sha256": "3bef34bf261fd539c72ae76b40d729a95140b663e773b4ad021a0c7e4d18977b",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/paired-comparison.json",
+      "path": "paired/paired-comparison.json",
+      "bytes": 1275,
+      "sha256": "e7852a0ad74ccb229fce07b33b5dad7390b7ce448e7147665a86d3f4f702e98c",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/resources-sift.json",
+      "path": "paired/resources-sift.json",
+      "bytes": 582,
+      "sha256": "bcc7905100e9dd4f28fa5f3217cec507e3fb55c09cad9d690ae639213efc46a7",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/resources-diagnostic256.json",
+      "path": "paired/resources-diagnostic256.json",
+      "bytes": 582,
+      "sha256": "f331974a9948c142c699c8a802c3eac7bcf8aa3abec520e39eb36132b6d2317c",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/1-sift-baseline/lifecycle.json",
+      "path": "paired/1-sift-baseline/lifecycle.json",
+      "bytes": 1550,
+      "sha256": "a29464e1ccadce79bc660ac2a0e592b8cc0f31745e84ec30aa243bbf2d2780f9",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/1-sift-baseline/loaded-maps-after-ddl.txt",
+      "path": "paired/1-sift-baseline/loaded-maps-after-ddl.txt",
+      "bytes": 90532,
+      "sha256": "a18e3c64f55a1ebc158c5e4b878e4f818578f019e89e647accfe567ba8e6401b",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/1-sift-baseline/measurement/report.json",
+      "path": "paired/1-sift-baseline/measurement/report.json",
+      "bytes": 2184,
+      "sha256": "9950db1f011f327ad21db0e75947079572a48404939d7c31d78433b193ee335c",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/2-sift-candidate/lifecycle.json",
+      "path": "paired/2-sift-candidate/lifecycle.json",
+      "bytes": 1554,
+      "sha256": "189433c57612bfa5e41a11aad170fb27eb7f35555dc7e315d31db9176dd574e1",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/2-sift-candidate/loaded-maps-after-ddl.txt",
+      "path": "paired/2-sift-candidate/loaded-maps-after-ddl.txt",
+      "bytes": 56743,
+      "sha256": "9a371eedd1f6ca2d12eb444848d94329f6a36af5ff8f23d9cd6f726d4507fede",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/2-sift-candidate/measurement/report.json",
+      "path": "paired/2-sift-candidate/measurement/report.json",
+      "bytes": 2182,
+      "sha256": "459aced707c3d0b84d4811ef1a0d6984fcfa0d8afda994cdca6640bd975a1075",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/3-hidden-candidate/lifecycle.json",
+      "path": "paired/3-hidden-candidate/lifecycle.json",
+      "bytes": 1560,
+      "sha256": "d5f165abb7b9ae19d2e81172548e22b45b9bf77b675c7fb64121402e1a315b29",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/3-hidden-candidate/loaded-maps-after-ddl.txt",
+      "path": "paired/3-hidden-candidate/loaded-maps-after-ddl.txt",
+      "bytes": 56057,
+      "sha256": "761eede35eebf0e33a9a7959253a30f8c70e6517ed9a9ec04a2b0591c36b781f",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/3-hidden-candidate/measurement/report.json",
+      "path": "paired/3-hidden-candidate/measurement/report.json",
+      "bytes": 2195,
+      "sha256": "72d271fba5797503be4905a83346694b1453142b684781d1af5a55a4fcb7113f",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/4-hidden-baseline/lifecycle.json",
+      "path": "paired/4-hidden-baseline/lifecycle.json",
+      "bytes": 1556,
+      "sha256": "ab26ffef9c16c24d94d2e864796b28b7d21041f05ae257874c88e385a7a9183f",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/4-hidden-baseline/loaded-maps-after-ddl.txt",
+      "path": "paired/4-hidden-baseline/loaded-maps-after-ddl.txt",
+      "bytes": 88915,
+      "sha256": "5b50438a885890a18397726c07b1013da33930aa9bb117271f2232ae6e399611",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/4-hidden-baseline/measurement/report.json",
+      "path": "paired/4-hidden-baseline/measurement/report.json",
+      "bytes": 2194,
+      "sha256": "ac8f4ec7e8557de6f8560aa30191067e0f69278e6ae1065c4c1f6aa66e7c70a5",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/artifact-combination.json",
+      "path": "native/artifact-combination.json",
+      "bytes": 1073,
+      "sha256": "3bef34bf261fd539c72ae76b40d729a95140b663e773b4ad021a0c7e4d18977b",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/cpu-restart.ids",
+      "path": "native/cpu-restart.ids",
+      "bytes": 39,
+      "sha256": "6338cda4c459b4e1849224b921c4b531b622b85b278980ec413e9dd5bf177560",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/deleted-exact.ids",
+      "path": "native/deleted-exact.ids",
+      "bytes": 42,
+      "sha256": "8d48f2ce8022875bb979cf235f888e0946425cf20b4c3fac42412ae7c7ee26c4",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/deleted.ids",
+      "path": "native/deleted.ids",
+      "bytes": 42,
+      "sha256": "8d48f2ce8022875bb979cf235f888e0946425cf20b4c3fac42412ae7c7ee26c4",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/exact.ids",
+      "path": "native/exact.ids",
+      "bytes": 39,
+      "sha256": "6338cda4c459b4e1849224b921c4b531b622b85b278980ec413e9dd5bf177560",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/first.ids",
+      "path": "native/first.ids",
+      "bytes": 39,
+      "sha256": "6338cda4c459b4e1849224b921c4b531b622b85b278980ec413e9dd5bf177560",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/gpu.log",
+      "path": "native/gpu.log",
+      "bytes": 547,
+      "sha256": "1b1c0751fc29713e501b244c0afdaca6b706b48b0a60b13a5f39f4309a2a2d60",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/inserted-exact.ids",
+      "path": "native/inserted-exact.ids",
+      "bytes": 50,
+      "sha256": "c10074fc85de90b8e1a14f0bd865d7c75a91b8e097ad0d118d8a366f65bcadb8",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/inserted.ids",
+      "path": "native/inserted.ids",
+      "bytes": 50,
+      "sha256": "c10074fc85de90b8e1a14f0bd865d7c75a91b8e097ad0d118d8a366f65bcadb8",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/lifecycle.jsonl",
+      "path": "native/lifecycle.jsonl",
+      "bytes": 1486,
+      "sha256": "781ada301512d1a509c99794d25c54641e0165f335e0313d5700064526a75acc",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/restart.ids",
+      "path": "native/restart.ids",
+      "bytes": 39,
+      "sha256": "6338cda4c459b4e1849224b921c4b531b622b85b278980ec413e9dd5bf177560",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/result.json",
+      "path": "native/result.json",
+      "bytes": 3456,
+      "sha256": "61b4c2b495309b2eeff8cb9989b61b04f1c0a627f9e96008bb0f3475b9e39ef9",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/server-1.console.log",
+      "path": "native/server-1.console.log",
+      "bytes": 314,
+      "sha256": "56f0d8f8b2634a982530e3302dc6315cd7d3c1ff7840cc0dd5447ba5e232b40a",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/native-g192n40-recovery006-001/p0-evidence/server-2.console.log",
+      "path": "native/server-2.console.log",
+      "bytes": 314,
+      "sha256": "56f0d8f8b2634a982530e3302dc6315cd7d3c1ff7840cc0dd5447ba5e232b40a",
+      "storage": "file"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/1-sift-baseline/resources.jsonl",
+      "path": "1-sift-baseline/resources.jsonl",
+      "bytes": 780078,
+      "sha256": "a8841e2108699d6d56abd2b15e139450cea6dd4ce1026ae1616df7a138f6b542",
+      "storage": "raw-queries-and-timing.zip"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/1-sift-baseline/measurement/queries.jsonl",
+      "path": "1-sift-baseline/measurement/queries.jsonl",
+      "bytes": 3950130,
+      "sha256": "b3a5a459a17971aad5cf5117db72db67ec74ef8b29c7232d13dff94b4c8b5f61",
+      "storage": "raw-queries-and-timing.zip"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/2-sift-candidate/resources.jsonl",
+      "path": "2-sift-candidate/resources.jsonl",
+      "bytes": 237562,
+      "sha256": "f455227f73d1f17b107bf3c1cb74b5703fa21ecb3cba54f8dba53167cd363e16",
+      "storage": "raw-queries-and-timing.zip"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/2-sift-candidate/measurement/queries.jsonl",
+      "path": "2-sift-candidate/measurement/queries.jsonl",
+      "bytes": 3956087,
+      "sha256": "468665f12674014c94d99dc581e1b3dd6d707d21cd579126206be60182ef3079",
+      "storage": "raw-queries-and-timing.zip"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/3-hidden-candidate/resources.jsonl",
+      "path": "3-hidden-candidate/resources.jsonl",
+      "bytes": 349173,
+      "sha256": "f28356ee443411583f0ace6ae6f7cd493b367023d0317fbdadcc7fae0277eefd",
+      "storage": "raw-queries-and-timing.zip"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/3-hidden-candidate/measurement/queries.jsonl",
+      "path": "3-hidden-candidate/measurement/queries.jsonl",
+      "bytes": 3958835,
+      "sha256": "e7595bf8ff3d2ca7d90cfaaf37459a6f4da216eb1d37950b3cf75ac5df9891e3",
+      "storage": "raw-queries-and-timing.zip"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/4-hidden-baseline/resources.jsonl",
+      "path": "4-hidden-baseline/resources.jsonl",
+      "bytes": 904569,
+      "sha256": "153811c841b044ea3d51b3bf5ab626ce936a2c886f02203136454cdf1994712c",
+      "storage": "raw-queries-and-timing.zip"
+    },
+    {
+      "source": "amd-evidence/paired-g192n40-recovery006-001/4-hidden-baseline/measurement/queries.jsonl",
+      "path": "4-hidden-baseline/measurement/queries.jsonl",
+      "bytes": 3951118,
+      "sha256": "1578ffe3bf6158c6df8fa5c9f89facdca160d24faf84f23fe71aa49a023ad00e",
+      "storage": "raw-queries-and-timing.zip"
+    }
+  ],
+  "archive": {
+    "path": "raw-queries-and-timing.zip",
+    "bytes": 6266107,
+    "sha256": "7992a7ee07c8d36513b852bc486a75591bc0380c56b17a98827b5eef94b3b762"
+  }
+}

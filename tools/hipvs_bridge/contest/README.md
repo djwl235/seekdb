@@ -1,9 +1,16 @@
-# AMD V5 candidate and GPU handoff
+# AMD V5 answer and reproducible validation
 
-This candidate preserves the official V5 CAGRA graph, FP32 input/output, fixed
-hipVS CAGRA search call and OBCUVS02 persistence. It improves peripheral resource
-reuse and the cgroup-constrained host build thread. **GPU compilation, the two
-formal datasets, recall, VRAM, speedup and the official score are unmeasured.**
+This answer is a descendant of frozen V5
+`634888d9b037153fa143d2c913ba4b25503e1d62`. It preserves FP32/L2, the fixed
+hipVS CAGRA search implementation and OBCUVS02 persistence. The selected product
+source is `24b972ab8500e29b4e750f8bee7a6b5c5f5193a3`; documentation-only
+descendants keep its product files unchanged.
+
+The real GPU run in [RESULTS-20261102.md](RESULTS-20261102.md) passed the measured
+quality, query-regression and resource checks on public SIFT and a separately
+identified 256-dimensional diagnostic set. Weighted build/query speedups were
+4.1879456854x / 5.6173347881x. The competition evaluates its private Hidden250K
+and fixed GPU-path checker and assigns the official score.
 
 ## Implemented changes
 
@@ -22,10 +29,16 @@ formal datasets, recall, VRAM, speedup and the official score are unmeasured.**
   ignored distance-copy error returns an error. Parameters reset per call, so a
   large top-k does not alter later smaller searches. Cached state is released on
   handle destruction and lazily initialized for deserialized handles.
-- `NN_DESCENT`, iterations100, degrees128/256, search width4 and
-  `itopk=max(library_default,512,4*k)` stay exactly as in V5. `lib=vsag` and the
-  adaptor are untouched. Freeing an index still requires exclusive ownership;
-  callers must not race `free` against ongoing operations.
+- Uniform parameters are `NN_DESCENT`, iterations40, graph/intermediate
+  degree192/192, `MULTI_CTA`, search width4 and
+  `itopk=max(library_default,1024,4*k)`. There is no dimension/dataset routing.
+  The official SQL and its index options are unchanged. `lib=vsag`, the adaptor,
+  CMake and Rust sources are unchanged from V5.
+- Each index has one joinable 32MiB-stack worker. Resource creation, build,
+  search, persistence and teardown execute on that worker/device, followed by
+  stream synchronization before returning borrowed caller buffers. A bounded
+  job slot and registered-caller draining protect shutdown. Ownership must
+  prevent new calls after `free` begins.
 
 ## Actual CPU checks
 
@@ -59,7 +72,6 @@ machine (or clone that full SHA), prepare a separate frozen-baseline checkout,
 and run in each root:
 
 ```bash
-bash tools/hipvs_bridge/contest/gpu_preflight.sh /workspace/evidence/candidate-preflight
 bash tools/hipvs_bridge/contest/build_official.sh /workspace/artifacts/candidate
 ```
 
@@ -67,8 +79,12 @@ The build wrapper contains the official commands/options unchanged. The baseline
 does not contain this wrapper, so run those identical three commands directly
 against the frozen checkout. Keep build logs, full commit, clean Git status,
 binary/bridge/library SHA256, `ldd`, GPU inventory and runtime/software settings.
-An unknown fixed-library source provenance must be resolved with the template
-provider; library name or a successful load alone is not a commit attestation.
+The supplied template can expose an installed `/opt/hipvs` prefix without a
+`.git` directory. Record the actual loaded library hash and leave source-commit
+attestation UNKNOWN if it is unavailable; do not create fake Git metadata.
+`gpu_preflight.sh` and `first_gpu_call.sh` are optional strict diagnostic tools
+that additionally require that metadata. Their rejection of an installation
+prefix is not a prerequisite of the official build or evidence of its failure.
 
 Before timing, run the **unchanged existing**
 `docs/gpu-vector-index-hipvs-cuvs/validation/run_ddl_persistence_smoke.sh` on an
@@ -110,9 +126,11 @@ LOAD DATA LOCAL INFILE '/workspace/data/sift/base.tsv' INTO TABLE items
 FIELDS TERMINATED BY '\t' LINES TERMINATED BY '\n' (id,v);
 ```
 
-Python needs PyMySQL installed before the offline run. This is solely a local
-measurement-tool dependency and adds no seekdb compile dependency. No credential
-is embedded; if needed provide `AMD_DB_USER`/`AMD_DB_PASSWORD` to the process.
+Local data/measurement tools need NumPy and PyMySQL. The recorded environment
+used NumPy2.5.4 and PyMySQL1.2.3; HDF5 reconstruction additionally used
+h5py3.16.0. These are local measurement dependencies, separate from the offline
+seekdb build. No credential is embedded; if needed provide
+`AMD_DB_USER`/`AMD_DB_PASSWORD` to the process.
 
 ```bash
 python3 tools/hipvs_bridge/contest/run_sql_benchmark.py \
@@ -162,25 +180,26 @@ official registration form; never store it in this package/logs/chat. A local
 candidate is not formally submitted by running these tools. The competition
 rebuilds source offline, checks the fixed GPU search and assigns the final score.
 
-Current local work provides tested engineering changes, not evidence for20/20.
-Build performance (14points) is especially unproven: affinity may be a no-op on
-an already restricted CPU mask and allocation reuse mainly targets the2-point
-query portion. Changing NN-descent iterations/degrees based on the older CPU
-HNSW reference is unsafe without fresh paired V5 quality measurements. Once a
-GPU is available, use real profiler results to choose the next build optimization
-and retain failed quality/performance cases instead of hiding them.
+The selected source passed a new four-case real GPU comparison after the old
+cloud instance failed. The 256-dimensional input is diagnostic, not the private
+Hidden250K. The local speedups exceed the 3.0x / 1.5x performance saturation
+thresholds; they are not an official 20-point award. Exact source/binary reuse,
+input hashes, recalls, resource samples and rejected predecessors are recorded
+in RESULTS-20261102.md and its evidence files. No result or timing from another
+team is credited to this answer.
 
 ## Executable GPU-window continuation
 
-The final offline capsule includes a byte-frozen V5 source archive and a full
-shallow Git snapshot pack. `restore_v5_snapshot.sh` restores the exact clean
-baseline without network into a **new** directory after verifying its SHA256.
-The candidate overlay is still uncommitted: the coordinating agent must review
-and commit it before `build_official.sh` or a paired run. No helper commits,
-pushes, registers accounts, rents resources or submits a score.
+Clone/check out the submitted source normally. No author-local capsule is
+required. `restore_v5_snapshot.sh` is an optional offline recovery helper for a
+caller-supplied frozen-V5 pack and its expected SHA256; the pack is not bundled
+in this repository. It restores into a new directory. The selected source is
+committed. The helpers do not push, register accounts, rent resources or submit
+official evaluations.
 
-At actual resource activation, retain the original activation epoch. From the
-candidate tree, run this first, before the long seekdb build:
+At actual resource activation, retain the original activation epoch. If the
+installation also provides the Git metadata required by the optional strict
+first-call helper, it can be invoked before the long seekdb build:
 
 ```bash
 bash tools/hipvs_bridge/contest/first_gpu_call.sh \
@@ -194,10 +213,11 @@ failed. It does not establish250K Recall, throughput, VRAM or the GPU-path hard
 gate. With no `/dev/kfd` it exits2 before any GPU invocation. Do not launch an
 instance merely to run preflight or wait for unprepared code/data.
 
-Next run `gpu_preflight.sh`. It requires the fixed hipVS SHA, W7900D inventory,
-ROCm7.2.4, GCC13.3, CMake3.31 and Rust1.97 (V5 source pins1.97.1). Unknown or old
-template provenance must be resolved before measured runs. The build wrapper
-refuses an existing `build_release`, dirty source or stale bridge output, and
+The optional `gpu_preflight.sh` checks the fixed hipVS SHA, W7900D inventory,
+ROCm7.2.4, GCC13.3, CMake3.31 and Rust1.97 (V5 source pins1.97.1). The official
+build needs the supplied headers/libraries and toolchain, not a fabricated
+`.git` installation. The build wrapper refuses an existing `build_release`,
+dirty source or stale bridge output, and
 records exact commands, exit, binary hashes and dynamic dependencies. The three
 official build commands/options remain unchanged. A process-local
 `CMAKE_BUILD_PARALLEL_LEVEL` within the64-core compile allowance may be set;
@@ -233,7 +253,8 @@ local startup/import; timeout requests controlled source-process cleanup.
 
 Query timing excludes Recall computation and transcript disk I/O; all8192
 individual SQL answers and latencies are still retained afterward. GPU sysfs
-VRAM and process RSS/HWM are sampled at100ms. `summarize_resources.py` compares
+VRAM and process RSS/HWM use the helper's default100ms period; the recorded
+selected-source run used a separate20ms sampler. `summarize_resources.py` compares
 the sampled45GB/1.25x/96GB limits but labels missed-peak risk and keeps GPU proof
 UNKNOWN. CPU quota, exclusive device ownership and precise peaks still need
 external environment/profiler evidence.
@@ -247,5 +268,6 @@ ROCm version. Command reference: AMD's
 Kernel traces plus loaded-library/source identities must show the actual SQL
 build/search graph path; utilization polling alone cannot establish that gate.
 
-Current additional CPU evidence:15 targeted checks, actual offline V5 Git
-restore, and expected no-GPU rejection. None is a GPU compile/run/score.
+Historical preparatory CPU evidence included15 targeted checks, offline V5 Git
+restore and expected no-GPU rejection. Keep it separate from the later real
+GPU evidence in RESULTS-20261102.md.

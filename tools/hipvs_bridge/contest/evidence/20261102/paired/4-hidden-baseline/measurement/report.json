@@ -1,0 +1,59 @@
+{
+  "dataset": "hidden",
+  "variant": "baseline",
+  "ordinal": 4,
+  "rows": 250000,
+  "dim": 256,
+  "nq": 4096,
+  "source_commit": "634888d9b037153fa143d2c913ba4b25503e1d62",
+  "dataset_role": "diagnostic-256",
+  "input_hashes": {
+    "base_tsv": "5b1f2ff043be7cf1b0a5e4bf93e734a9c312113fbb887b418ea69cb02f4f57f6",
+    "queries_f32": "e84d72104c719e71b59f5304526d1fca514b713887f015c3caaff616c354a262",
+    "truth_json": "7529153d2a7182bdac1210330a48adf0bb5128f933c553ecc1d4f7c445e41a6e",
+    "ids_json": "26aed8ea823d686b7dd929fb72b005f03b903a9560927533d81270328fefdf39"
+  },
+  "binary_sha256": "a0dc4e7f216ca4fc7f7d35e7a1ab2e6271a2feacda72aec3a3aa199979de03d1",
+  "bridge_sha256": "030b36246e3fc4e92743e432d00979f7a729fdf36fb8b6ff482b75fb008e9da6",
+  "ddl": "CREATE VECTOR INDEX idx_items ON items(v) WITH (distance=l2,type=hnsw,lib=cuvs,m=16,ef_construction=200,ef_search=64)",
+  "state": "SQL_MEASURED_GPU_AND_RESOURCE_GATES_PENDING",
+  "gpu_execution": "UNKNOWN",
+  "vram_gate": "UNKNOWN",
+  "resource_gate": "UNKNOWN",
+  "official_score": "UNKNOWN",
+  "version": "5.7.25-OceanBase seekdb-v1.4.0.0",
+  "prebuild_schema": "('items', \"CREATE TABLE `items` (\\n  `id` bigint(20) NOT NULL,\\n  `v` VECTOR(256) DEFAULT NULL,\\n  PRIMARY KEY (`id`)\\n) ORGANIZATION INDEX DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC COMPRESSION = 'zstd_1.3.8' BLOCK_SIZE = 16384 TABLET_SIZE = 134217728 PCTFREE = 0\")",
+  "ddl_seconds": 48.069543707650155,
+  "first_query_seconds": 0.04036084935069084,
+  "build_to_first_query_seconds": 48.109904557000846,
+  "first_ids": [
+    130793,
+    11351,
+    229534,
+    159117,
+    18866,
+    216482,
+    212988,
+    45280,
+    100959,
+    100095
+  ],
+  "query": {
+    "10": {
+      "qps": 129.1145054114982,
+      "seconds": 31.723778726067394,
+      "summed_sql_seconds": 31.721509580500424,
+      "evidence_io_in_timing": false,
+      "p95_seconds": 0.008190694730728865,
+      "recall": 0.95107421875
+    },
+    "100": {
+      "qps": 122.1067218002648,
+      "seconds": 33.54442687192932,
+      "summed_sql_seconds": 33.539781112223864,
+      "evidence_io_in_timing": false,
+      "p95_seconds": 0.00862768292427063,
+      "recall": 0.89861572265625
+    }
+  }
+}
