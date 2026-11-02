@@ -28,7 +28,7 @@ Reference mapping:
 Workspace/parameter-cache implementation and contest measurement tools were
 written for this candidate. They do not modify or vendor hipVS itself.
 
-## V5 graph-shape reference and selected parameters
+## Historical V5 graph-shape reference and first selection
 
 The later public V5 reference was inspected at the immutable commit
 `3c8ed145d733f71917b0d9b9c837b98d1505de55`:
@@ -53,5 +53,28 @@ The [fixed C API](https://github.com/AMD-Ecosystem/hipVS/blob/f96a663d0a4441d6f5
 exposes supported CAGRA search parameters, including MULTI_CTA.
 The implementation continues to call its original CAGRA search API. Neither
 hipVS/cuVS nor the official SQL/index options are modified. Source and measured
-results are bound in RESULTS-20261102.md; actual competition GPU-path acceptance
-and private Hidden250K grading remain with the official evaluator.
+results for that historical product are bound in RESULTS-20261102.md. It later
+received official 10.425/20 (build1.415x/query3.560x/gates pass).
+
+## Revision 2: independent uniform small-graph experiment
+
+The fixed `70bbc4290789640b7ee98f7241f058e84c77501b` reference above provides a
+public clue that lower graph degrees can reduce build work. This revision uses
+uniform graph/intermediate degree128/128 for every supported dimension, NN12,
+and this team's existing MULTI_CTA1024/width4 search/worker/cache implementation.
+Its business logic, data, tests, screenshots and score were not copied; the
+reference's dimension-dependent routing was not imported. Parameter selection
+was an independently implemented, measured change from this team's 192/192
+NN12 candidate. The reference-to-full-score-submission chain remains unverified.
+
+The CPU-budget follow-up independently adds calling-thread cgroup membership,
+mount-root and ancestor-limit handling, plus task-local OpenMP save/limit/restore
+to the attributed affinity foundation. It changes no global environment or
+fixed library. CPU-boundary tests and a separate real-GPU preinitialized-OpenMP
+diagnostic were retained, with old and final-header identities distinguished.
+
+The measured product source is `16433ab78c539466b7123e1d3f6673cac41812ff`.
+This integration is a descendant of the prior documented answer and contains
+the identical five changed product/test blobs. The new paired results and all
+source/artifact distinctions are in [RESULTS-20261102-v2.md](RESULTS-20261102-v2.md).
+Official Hidden250K, GPU-path acceptance and the new score remain unclaimed.
