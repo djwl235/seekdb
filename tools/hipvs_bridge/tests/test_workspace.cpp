@@ -41,7 +41,7 @@ int cuvsCagraIndexParamsDestroy(cuvsCagraIndexParams_t p) { free(p); --index_par
 int cuvsCagraIndexCreate(cuvsCagraIndex_t *p) { if(fail_stage==3) return 1; *p=(cuvsCagraIndex_t)calloc(1,sizeof(**p)); ++indexes; return 0; }
 int cuvsCagraIndexDestroy(cuvsCagraIndex_t p) { free(p); --indexes; return 0; }
 int cuvsCagraBuild(cuvsResources_t,cuvsCagraIndexParams_t p,DLManagedTensor *d,cuvsCagraIndex_t i) {
-  assert(p->build_algo==NN_DESCENT && p->graph_degree==192 && p->intermediate_graph_degree==192 && p->nn_descent_niter==12);
+  assert(p->build_algo==NN_DESCENT && p->graph_degree==128 && p->intermediate_graph_degree==128 && p->nn_descent_niter==12);
   if(fail_stage==4) return 1;
   i->n=d->dl_tensor.shape[0]; i->dim=d->dl_tensor.shape[1]; return 0;
 }
