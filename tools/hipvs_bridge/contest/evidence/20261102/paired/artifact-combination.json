@@ -1,0 +1,22 @@
+{
+  "instance_recovery": "006; all new paired measurements; old interrupted V60 not merged",
+  "baseline_bridge_source": "634888d9b037153fa143d2c913ba4b25503e1d62",
+  "candidate_bridge_source": "24b972ab8500e29b4e750f8bee7a6b5c5f5193a3",
+  "host_source_commit": "cd3323c7181c0eb76941741875d922a878164017",
+  "host_is_frozen634_original_binary": false,
+  "host_reused_both_variants": true,
+  "host_binary_sha256": "a0dc4e7f216ca4fc7f7d35e7a1ab2e6271a2feacda72aec3a3aa199979de03d1",
+  "unchanged_non_bridge_source": true,
+  "src_tree": "6a00281f4f80bc6a7b567078aebedf2267c733b1",
+  "fresh_host_compile": false,
+  "official_final_three_commands": "PENDING_WINNER_SELECTION",
+  "bridge_sha256": {
+    "baseline": "030b36246e3fc4e92743e432d00979f7a729fdf36fb8b6ff482b75fb008e9da6",
+    "candidate": "443a02fb52e00123b409ba141de070d7328fb3150a4211fb9640b5d4264953ea"
+  },
+  "original_start_epoch": 1793538838,
+  "original_five_minute": "NOT_MET_PRESERVED",
+  "parameters": "graph192/inter192/NN40/MULTI_CTA1024/width4",
+  "source_clean": true,
+  "new_four_cases_required": true
+}

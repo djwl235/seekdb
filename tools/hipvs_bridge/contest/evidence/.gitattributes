@@ -1,0 +1,2 @@
+# Preserve original evidence bytes, including intentional kernel-map whitespace.
+* -text -whitespace
