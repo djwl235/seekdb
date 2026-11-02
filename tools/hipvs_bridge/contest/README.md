@@ -3,22 +3,31 @@
 This answer is a descendant of frozen V5
 `634888d9b037153fa143d2c913ba4b25503e1d62`. It preserves FP32/L2, the fixed
 hipVS CAGRA search implementation and OBCUVS02 persistence. The selected product
-source is `24b972ab8500e29b4e750f8bee7a6b5c5f5193a3`; documentation-only
-descendants keep its product files unchanged.
+content matches `16433ab78c539466b7123e1d3f6673cac41812ff`; integration and
+documentation descendants retain those exact product blobs.
 
-The real GPU run in [RESULTS-20261102.md](RESULTS-20261102.md) passed the measured
-quality, query-regression and resource checks on public SIFT and a separately
-identified 256-dimensional diagnostic set. Weighted build/query speedups were
-4.1879456854x / 5.6173347881x. The competition evaluates its private Hidden250K
-and fixed GPU-path checker and assigns the official score.
+The new run in [RESULTS-20261102-v2.md](RESULTS-20261102-v2.md) passed measured
+quality, query-regression and 20ms-sampled resource checks on public SIFT and a
+separately identified 256-dimensional diagnostic set. Both variants used the
+same 16-CPU affinity; local weighted build/query ratios were 3.0543210620x /
+6.7091265084x. Its shared host is the previously rebuilt 24b binary; its candidate
+bridge was freshly compiled. The earlier 24b submission officially scored
+10.425/20, with build=1.415x/query=3.560x/gates=pass. Its earlier local ratio was
+inflated by unequal CPU affinity and is retained as historical evidence. The
+new candidate's official Hidden250K, GPU-path checker and score remain pending.
+
+This public collaboration branch contains source and an aggregate result summary.
+The revision-2 raw logs, query answers and deployment receipts remain in the
+private team competition repository; no new raw evidence is published here.
 
 ## Implemented changes
 
-- The build thread temporarily uses a compact subset of allowed CPUs only when
-  a readable cgroup quota is narrower than its affinity mask. Its prior mask is
-  restored on success/error. No global affinity, system setting or CPU budget is
-  changed. The root cgroup files are best-effort; nested host cgroups without a
-  namespaced root may not yield a quota. GPU comparison must test applicability.
+- The build worker reads its own thread cgroup membership and mount mapping,
+  then takes the tightest readable v1/v2 ancestor quota. It temporarily limits
+  its allowed-CPU mask and its task-local OpenMP thread count when appropriate,
+  restoring both on success/error. It preserves caller settings and makes no
+  global environment, affinity, system-policy or quota change. Unreadable or
+  unlimited controls remain best-effort; runtime applicability is measured.
 - Each index reuses three RMM buffers and one search-parameter object, with a
   mutex protecting the resource/parameters. At most 16 MiB per buffer is retained;
   requests exceeding any cap allocate transient buffers. An individual buffer
@@ -29,8 +38,8 @@ and fixed GPU-path checker and assigns the official score.
   ignored distance-copy error returns an error. Parameters reset per call, so a
   large top-k does not alter later smaller searches. Cached state is released on
   handle destruction and lazily initialized for deserialized handles.
-- Uniform parameters are `NN_DESCENT`, iterations40, graph/intermediate
-  degree192/192, `MULTI_CTA`, search width4 and
+- Uniform parameters are `NN_DESCENT`, iterations12, graph/intermediate
+  degree128/128, `MULTI_CTA`, search width4 and
   `itopk=max(library_default,1024,4*k)`. There is no dimension/dataset routing.
   The official SQL and its index options are unchanged. `lib=vsag`, the adaptor,
   CMake and Rust sources are unchanged from V5.
